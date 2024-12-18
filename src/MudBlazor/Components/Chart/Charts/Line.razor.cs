@@ -1,8 +1,6 @@
 ﻿using System.Text;
 using Microsoft.AspNetCore.Components;
-using MudBlazor.Charts.SVG.Models;
-using MudBlazor.Components.Chart;
-using MudBlazor.Components.Chart.Interpolation;
+using MudBlazor.Interpolation;
 
 #nullable enable
 namespace MudBlazor.Charts
@@ -10,6 +8,11 @@ namespace MudBlazor.Charts
     /// <summary>
     /// Represents a chart which displays series values as connected lines.
     /// </summary>
+    /// <seealso cref="Bar"/>
+    /// <seealso cref="Donut"/>
+    /// <seealso cref="Pie"/>
+    /// <seealso cref="StackedBar"/>
+    /// <seealso cref="TimeSeries"/>
     partial class Line : MudCategoryChartBase
     {
         private const double BoundWidth = 650.0;

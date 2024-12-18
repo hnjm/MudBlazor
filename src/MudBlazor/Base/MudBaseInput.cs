@@ -211,7 +211,7 @@ namespace MudBlazor
         /// </remarks>
         [Parameter]
         [Category(CategoryTypes.FormComponent.Appearance)]
-        public Variant Variant { get; set; } = Variant.Text;
+        public Variant Variant { get; set; } = MudGlobal.InputDefaults.Variant;
 
         /// <summary>
         /// The amount of vertical spacing for this input.
@@ -221,14 +221,14 @@ namespace MudBlazor
         /// </remarks>
         [Parameter]
         [Category(CategoryTypes.FormComponent.Appearance)]
-        public Margin Margin { get; set; } = Margin.None;
+        public Margin Margin { get; set; } = MudGlobal.InputDefaults.Margin;
 
         /// <summary>
         /// Typography for the input text.
         /// </summary>
         [Parameter]
         [Category(CategoryTypes.FormComponent.Appearance)]
-        public Typo Typo { get; set; } = Typo.input;
+        public Typo Typo { get; set; } = Typo.subtitle1;
 
         /// <summary>
         /// The text displayed in the input if no <see cref="Value"/> is specified.

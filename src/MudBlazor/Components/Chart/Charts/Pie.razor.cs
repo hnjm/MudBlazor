@@ -1,5 +1,4 @@
 ﻿using Microsoft.AspNetCore.Components;
-using MudBlazor.Charts.SVG.Models;
 
 #nullable enable
 namespace MudBlazor.Charts
@@ -7,6 +6,11 @@ namespace MudBlazor.Charts
     /// <summary>
     /// Represents a chart which displays values as a percentage of a circle.
     /// </summary>
+    /// <seealso cref="Bar"/>
+    /// <seealso cref="Donut"/>
+    /// <seealso cref="Line"/>
+    /// <seealso cref="StackedBar"/>
+    /// <seealso cref="TimeSeries"/>
     partial class Pie : MudCategoryChartBase
     {
         /// <summary>

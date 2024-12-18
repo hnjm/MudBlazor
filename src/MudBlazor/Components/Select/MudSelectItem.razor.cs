@@ -5,9 +5,11 @@ namespace MudBlazor
 {
 #nullable enable
     /// <summary>
-    /// Represents an option of a select or multi-select. To be used inside MudSelect.
+    /// A selectable option displayed within a <see cref="MudSelect{T}"/> component.
     /// </summary>
-    public partial class MudSelectItem<T> : MudBaseSelectItem, IDisposable
+    /// <typeparam name="T">The type of value linked to this item.  Must be the same type as the parent <see cref="MudSelect{T}"/>.</typeparam>
+    /// <seealso cref="MudSelect{T}"/>
+    public partial class MudSelectItem<T> : MudComponentBase, IDisposable
     {
         private IMudSelect? _parent;
         private IMudShadowSelect? _shadowParent;
@@ -19,7 +21,7 @@ namespace MudBlazor
         internal string ItemId { get; } = Identifier.Create();
 
         /// <summary>
-        /// The parent select component
+        /// The <see cref="MudSelect{T}"/> hosting this item.
         /// </summary>
         [CascadingParameter]
         internal IMudSelect? IMudSelect
@@ -77,33 +79,48 @@ namespace MudBlazor
         }
 
         /// <summary>
-        /// A user-defined option that can be selected
+        /// The custom value associated with this item.
         /// </summary>
         [Parameter]
         [Category(CategoryTypes.FormComponent.Behavior)]
         public T? Value { get; set; }
 
         /// <summary>
-        /// Mirrors the MultiSelection status of the parent select
+        /// Prevents the user from interacting with this item.
         /// </summary>
-        protected bool MultiSelection
-        {
-            get
-            {
-                if (MudSelect == null)
-                    return false;
-                return MudSelect.MultiSelection;
-            }
-        }
+        /// <remarks>
+        /// Defaults to <c>false</c>.
+        /// </remarks>
+        [Parameter]
+        [Category(CategoryTypes.General.Behavior)]
+        public bool Disabled { get; set; }
 
         /// <summary>
-        /// Selected state of the option. Only works if the parent is a mulit-select
+        /// The custom content within this item.
         /// </summary>
+        [Parameter]
+        [Category(CategoryTypes.General.Behavior)]
+        public RenderFragment? ChildContent { get; set; }
+
+        /// <summary>
+        /// Whether multi-selection is enabled in the parent <see cref="MudSelect{T}"/>.
+        /// </summary>
+        protected bool MultiSelection => MudSelect is { MultiSelection: true };
+
+        /// <summary>
+        /// Whether this item is selected.
+        /// </summary>
+        /// <remarks>
+        /// Only applies when <see cref="MultiSelection"/> is <c>true</c>.
+        /// </remarks>
         internal bool Selected { get; set; }
 
         /// <summary>
-        /// The checkbox icon reflects the multi-select option's state
+        /// The icon to display whether this item is selected.
         /// </summary>
+        /// <remarks>
+        /// When <see cref="Selected"/> is <c>true</c>, <see cref="Icons.Material.Filled.CheckBox"/> is returned.  Otherwise, <see cref="Icons.Material.Filled.CheckBoxOutlineBlank"/>.
+        /// </remarks>
         protected string? CheckBoxIcon
         {
             get
@@ -125,15 +142,21 @@ namespace MudBlazor
             }
         }
 
-        private void OnClicked()
+        private Task OnClickHandleAsync()
         {
             if (MultiSelection)
+            {
                 Selected = !Selected;
+            }
 
             MudSelect?.SelectOption(Value);
-            InvokeAsync(StateHasChanged);
+
+            return InvokeAsync(StateHasChanged);
         }
 
+        /// <summary>
+        /// Releases resources used by this component.
+        /// </summary>
         public void Dispose()
         {
             try

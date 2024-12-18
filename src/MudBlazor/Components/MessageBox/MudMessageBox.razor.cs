@@ -1,4 +1,7 @@
-﻿using System.Diagnostics.CodeAnalysis;
+﻿// Copyright (c) 2020 MudBlazor
+// License: MIT
+
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using MudBlazor.State;
@@ -10,6 +13,7 @@ namespace MudBlazor
     /// <summary>
     /// A pop-up dialog with a simple message and button choices.
     /// </summary>
+    /// <seealso cref="MudDialog" />
     public partial class MudMessageBox : MudComponentBase
     {
         private readonly ParameterState<bool> _visibleState;
@@ -33,7 +37,7 @@ namespace MudBlazor
         private IDialogService DialogService { get; set; } = null!;
 
         [CascadingParameter]
-        internal MudDialogInstance? DialogInstance { get; set; }
+        internal IMudDialogInstance? DialogInstance { get; set; }
 
         /// <summary>
         /// The title of this message box.

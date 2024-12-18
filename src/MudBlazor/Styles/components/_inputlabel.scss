@@ -43,7 +43,7 @@
   transform: translate(14px, 20px) scale(1);
   max-width: calc(100% - 14px);
   pointer-events: none;
-  background-color: var(--mud-palette-surface);
+  background-color: transparent;
   padding: 0px 5px !important;
 
 
@@ -131,6 +131,46 @@ label.mud-input-label.mud-input-label-inputcontrol {
       &.mud-input-label-outlined {
         transform: translate(-14px, -6px) scale(0.75);
       }
+    }
+  }
+}
+
+.mud-input-content-placement- {
+  &start {
+    flex-direction: row-reverse;
+
+    &.mud-input-with-content {
+      margin-left: 16px;
+      margin-inline-start: 16px;
+    }
+  }
+
+  &end {
+    flex-direction: row;
+
+    &.mud-input-with-content {
+      margin-right: 16px;
+      margin-inline-end: 16px;
+    }
+  }
+
+  &top {
+    margin-inline-end: unset;
+    flex-direction: column-reverse;
+
+    &.mud-input-with-content {
+      margin-left: 16px;
+      margin-inline-start: 16px;
+    }
+  }
+
+  &bottom {
+    margin-inline-end: unset;
+    flex-direction: column;
+
+    &.mud-input-with-content {
+      margin-left: 16px;
+      margin-inline-start: 16px;
     }
   }
 }

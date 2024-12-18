@@ -1,9 +1,7 @@
 ﻿// License: MIT
 // Copyright (c) 2019 Blazored - See https://github.com/Blazored
-// Copyright (c) 2020 Jonny Larsson and Meinrad Recheis
+// Copyright (c) 2020 MudBlazor Contributors
 
-using System;
-using System.Threading.Tasks;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using MudBlazor.Interfaces;
@@ -16,12 +14,13 @@ namespace MudBlazor
     /// <summary>
     /// An overlay providing the user with information, a choice, or other input.
     /// </summary>
-    /// <seealso cref="MudDialogInstance"/>
+    /// <seealso cref="MudDialogContainer"/>
     /// <seealso cref="MudDialogProvider"/>
     /// <seealso cref="DialogOptions"/>
     /// <seealso cref="DialogParameters{T}"/>
     /// <seealso cref="DialogReference"/>
-    /// <seealso cref="DialogService"/>
+    /// <seealso cref="MudBlazor.DialogService"/>
+    /// <seealso cref="MudMessageBox" />
     public partial class MudDialog : MudComponentBase
     {
         private IDialogReference? _reference;
@@ -48,7 +47,7 @@ namespace MudBlazor
             .Build();
 
         [CascadingParameter]
-        private MudDialogInstance? DialogInstance { get; set; }
+        private IMudDialogInstanceInternal? DialogInstance { get; set; }
 
         [CascadingParameter(Name = "IsNested")]
         private bool IsNested { get; set; }
@@ -60,7 +59,7 @@ namespace MudBlazor
         /// The custom content for this dialog's title.
         /// </summary>
         /// <remarks>
-        /// When <c>null</c>, the <see cref="MudDialogInstance.Title"/> will be used.
+        /// When <c>null</c>, the <see cref="MudDialogContainer.Title"/> will be used.
         /// </remarks>
         [Parameter]
         [Category(CategoryTypes.Dialog.Behavior)]
@@ -164,7 +163,7 @@ namespace MudBlazor
         /// </summary>
         /// <remarks>
         /// Defaults to <c>false</c>.<br />
-        /// This can be bound via <c>@bind-Visible</c> to show or hide inline dialogs.  For regular dialogs, use the <see cref="DialogService.ShowAsync(Type)"/> and <see cref="MudDialogInstance.Close()"/> methods.
+        /// This can be bound via <c>@bind-Visible</c> to show or hide inline dialogs.  For regular dialogs, use the <see cref="DialogService.ShowAsync(Type)"/> and <see cref="IMudDialogInstance.Close()"/> methods.
         /// </remarks>
         [Parameter]
         [Category(CategoryTypes.Dialog.Behavior)]
@@ -226,9 +225,7 @@ namespace MudBlazor
 
             await _visibleState.SetValueAsync(true);
 
-            // ReSharper disable MethodHasAsyncOverload ignore for now
-            _reference = DialogService.Show<MudDialog>(title, parameters, options ?? Options);
-            // ReSharper restore MethodHasAsyncOverload
+            _reference = await DialogService.ShowAsync<MudDialog>(title, parameters, options ?? Options);
 
             // Do not await this!
             _reference.Result.ContinueWith(t =>

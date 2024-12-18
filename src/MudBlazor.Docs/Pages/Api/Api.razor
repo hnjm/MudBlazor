@@ -2,39 +2,18 @@
 @using MudBlazor.Docs.Components
 @namespace MudBlazor.Docs.Pages.Api
 
+<style>
+    .mud-table-toolbar { height: auto; }
+    [id] { scroll-margin-top: 65px; }
+</style>
+
 <DocsPage>
     @if (DocumentedType != null)
     {
         <ApiBreadcrumbs Type="@DocumentedType" />
 
-        <DocsPageHeader Title="@Title" />
+        <DocsPageHeader Title="@Title" IsApi="true" Component="@TypeName" />
         <DocsPageContent>
-
-            @if (DocumentedType.Summary != null)
-            {
-                <ApiText Text="@DocumentedType.Summary" />
-            }
-
-            @if (DocumentedType.IsComponent)
-            {
-                <MudAlert Severity="Severity.Info" Class="mt-6">
-                    For examples and details on the usage of this component, visit the example page: <MudLink Href="@DocumentedType.ComponentUrl" Typo="Typo.inherit">@DocumentedType.NameFriendly</MudLink>
-                </MudAlert>
-            }
-
-            @if (ShowInheritance)
-            {
-                <DocsPageSection>
-                    <SectionHeader Title="Inheritance" />
-                    <SectionContent Outlined="true" IsApiSection="true">
-                        <MudGrid Class="pa-0">
-                            <MudItem xs="12">
-                                <ApiTypeHierarchy TypeName="@DocumentedType.Name" />
-                            </MudItem>
-                        </MudGrid>
-                    </SectionContent>
-                </DocsPageSection>
-            }
 
             @if (DocumentedType.Properties.Count > 0)
             {
@@ -43,7 +22,7 @@
                     <SectionContent Outlined="true" IsApiSection="true">
                         <MudGrid Class="pa-0">
                             <MudItem xs="12">
-                                <ApiMemberTable Mode="@ApiMemberTableMode.Properties" TypeName="@DocumentedType.Name" />
+                                <ApiMemberTable Mode="@ApiMemberTableMode.Properties" Type="@DocumentedType" />
                             </MudItem>
                         </MudGrid>
                     </SectionContent>
@@ -57,7 +36,7 @@
                     <SectionContent Outlined="true" IsApiSection="true">
                         <MudGrid Class="pa-0">
                             <MudItem xs="12">
-                                <ApiMemberTable Mode="@ApiMemberTableMode.Methods" TypeName="@DocumentedType.Name" />
+                                <ApiMemberTable Mode="@ApiMemberTableMode.Methods" Type="@DocumentedType" />
                             </MudItem>
                         </MudGrid>
                     </SectionContent>
@@ -71,7 +50,7 @@
                     <SectionContent Outlined="true" IsApiSection="true">
                         <MudGrid Class="pa-0">
                             <MudItem xs="12">
-                                <ApiMemberTable Mode="@ApiMemberTableMode.Fields" TypeName="@DocumentedType.Name" />
+                                <ApiMemberTable Mode="@ApiMemberTableMode.Fields" Type="@DocumentedType" />
                             </MudItem>
                         </MudGrid>
                     </SectionContent>
@@ -81,11 +60,11 @@
             @if (DocumentedType.Events.Count > 0)
             {
                 <DocsPageSection>
-                    <SectionHeader Title="Fields" />
+                    <SectionHeader Title="Events" />
                     <SectionContent Outlined="true" IsApiSection="true">
                         <MudGrid Class="pa-0">
                             <MudItem xs="12">
-                                <ApiMemberTable Mode="@ApiMemberTableMode.Events" TypeName="@DocumentedType.Name" />
+                                <ApiMemberTable Mode="@ApiMemberTableMode.Events" Type="@DocumentedType" />
                             </MudItem>
                         </MudGrid>
                     </SectionContent>
@@ -106,6 +85,16 @@
                 </DocsPageSection>
             }
 
+            @if (DocumentedType.Links.Count > 0)
+            {
+                <DocsPageSection>
+                    <SectionHeader Title="See Also" />
+                    <SectionContent Outlined="true" IsApiSection="true">
+                        <ApiSeeAlsoLinks Type="@DocumentedType" />
+                    </SectionContent>
+                </DocsPageSection>
+            }
+
             @if (DocumentedType.GlobalSettings.Count > 0)
             {
                 <DocsPageSection>
@@ -113,12 +102,27 @@
                     <SectionContent Outlined="true" IsApiSection="true">
                         <MudGrid Class="pa-0">
                             <MudItem xs="12">
-                                <ApiGlobalSettingTable Type="@DocumentedType" />
+                                <ApiMemberTable Mode="ApiMemberTableMode.Globals" Type="@DocumentedType" />
                             </MudItem>
                         </MudGrid>
                     </SectionContent>
                 </DocsPageSection>
             }
+
+            @if (ShowInheritance)
+            {
+                <DocsPageSection>
+                    <SectionHeader Title="Inheritance" />
+                    <SectionContent Outlined="true" IsApiSection="true">
+                        <MudGrid Class="pa-0">
+                            <MudItem xs="12">
+                                <ApiTypeHierarchy Type="@DocumentedType" />
+                            </MudItem>
+                        </MudGrid>
+                    </SectionContent>
+                </DocsPageSection>
+            }
+
         </DocsPageContent>
     }
     else

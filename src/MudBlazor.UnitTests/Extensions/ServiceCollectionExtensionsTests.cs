@@ -2,8 +2,6 @@
 // MudBlazor licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System;
-using System.Collections.Generic;
 using FluentAssertions;
 using Microsoft.AspNetCore.Components;
 using Microsoft.Extensions.DependencyInjection;
@@ -392,10 +390,12 @@ public class ServiceCollectionExtensionsTests
         var serviceProvider = services.BuildServiceProvider();
         var mudLocalizer = serviceProvider.GetService<InternalMudLocalizer>();
         var localizationInterceptor = serviceProvider.GetService<ILocalizationInterceptor>();
+        var localizationEnumInterceptor = serviceProvider.GetService<ILocalizationEnumInterceptor>();
 
         // Assert
         mudLocalizer.Should().NotBeNull();
         localizationInterceptor.Should().NotBeNull();
+        localizationEnumInterceptor.Should().NotBeNull();
     }
 
     [Test]
@@ -410,6 +410,7 @@ public class ServiceCollectionExtensionsTests
         // Act
         services.AddMudServices();
         var serviceProvider = services.BuildServiceProvider();
+        var timeProvider = serviceProvider.GetService<TimeProvider>();
         var dialogService = serviceProvider.GetService<IDialogService>();
         var snackBarService = serviceProvider.GetService<ISnackbar>();
         var browserViewportService = serviceProvider.GetService<IBrowserViewportService>();
@@ -429,8 +430,10 @@ public class ServiceCollectionExtensionsTests
         var eventListenerFactory = serviceProvider.GetService<IEventListenerFactory>();
         var mudLocalizer = serviceProvider.GetService<InternalMudLocalizer>();
         var localizationInterceptor = serviceProvider.GetService<ILocalizationInterceptor>();
+        var localizationEnumInterceptor = serviceProvider.GetService<ILocalizationEnumInterceptor>();
 
         // Assert
+        timeProvider.Should().NotBeNull();
         dialogService.Should().NotBeNull();
         snackBarService.Should().NotBeNull();
         browserViewportService.Should().NotBeNull();
@@ -450,6 +453,7 @@ public class ServiceCollectionExtensionsTests
         eventListenerFactory.Should().NotBeNull();
         mudLocalizer.Should().NotBeNull();
         localizationInterceptor.Should().NotBeNull();
+        localizationEnumInterceptor.Should().NotBeNull();
     }
 
     [Test]
@@ -479,6 +483,8 @@ public class ServiceCollectionExtensionsTests
             options.SnackbarConfiguration.RequireInteraction = true;
             options.SnackbarConfiguration.BackgroundBlurred = true;
             options.SnackbarConfiguration.SnackbarVariant = Variant.Outlined;
+            options.SnackbarConfiguration.SuccessIcon = @Icons.Material.Outlined.CheckCircleOutline;
+            options.SnackbarConfiguration.WarningIcon = @Icons.Material.Outlined.WarningAmber;
 
             // ResizeOptions
             options.ResizeOptions.BreakpointDefinitions = new Dictionary<Breakpoint, int>
@@ -504,6 +510,7 @@ public class ServiceCollectionExtensionsTests
             expectedOptions = options;
         });
         var serviceProvider = services.BuildServiceProvider();
+        var timeProvider = serviceProvider.GetService<TimeProvider>();
         var dialogService = serviceProvider.GetService<IDialogService>();
         var snackBarService = serviceProvider.GetService<ISnackbar>();
         var browserViewportService = serviceProvider.GetService<IBrowserViewportService>();
@@ -523,6 +530,7 @@ public class ServiceCollectionExtensionsTests
         var eventListenerFactory = serviceProvider.GetService<IEventListenerFactory>();
         var mudLocalizer = serviceProvider.GetService<InternalMudLocalizer>();
         var localizationInterceptor = serviceProvider.GetService<ILocalizationInterceptor>();
+        var localizationEnumInterceptor = serviceProvider.GetService<ILocalizationEnumInterceptor>();
         var snackBarOptions = serviceProvider.GetRequiredService<IOptions<SnackbarConfiguration>>();
         var resizeOptions = serviceProvider.GetRequiredService<IOptions<ResizeOptions>>();
         var resizeObserverOptions = serviceProvider.GetRequiredService<IOptions<ResizeObserverOptions>>();
@@ -533,6 +541,7 @@ public class ServiceCollectionExtensionsTests
         var actualPopoverOptions = popoverOptions.Value;
 
         // Assert
+        timeProvider.Should().NotBeNull();
         dialogService.Should().NotBeNull();
         snackBarService.Should().NotBeNull();
         browserViewportService.Should().NotBeNull();
@@ -552,6 +561,7 @@ public class ServiceCollectionExtensionsTests
         eventListenerFactory.Should().NotBeNull();
         mudLocalizer.Should().NotBeNull();
         localizationInterceptor.Should().NotBeNull();
+        localizationEnumInterceptor.Should().NotBeNull();
 
         // We can't check reference here, instead we need to check each value
         actualPopoverOptions.QueueDelay.Should().Be(expectedOptions!.PopoverOptions.QueueDelay);
@@ -582,5 +592,11 @@ public class ServiceCollectionExtensionsTests
         actualSnackBarOptions.RequireInteraction.Should().Be(expectedOptions.SnackbarConfiguration.RequireInteraction);
         actualSnackBarOptions.BackgroundBlurred.Should().Be(expectedOptions.SnackbarConfiguration.BackgroundBlurred);
         actualSnackBarOptions.SnackbarVariant.Should().Be(expectedOptions.SnackbarConfiguration.SnackbarVariant);
+        actualSnackBarOptions.IconSize.Should().Be(expectedOptions.SnackbarConfiguration.IconSize);
+        actualSnackBarOptions.NormalIcon.Should().Be(expectedOptions.SnackbarConfiguration.NormalIcon);
+        actualSnackBarOptions.InfoIcon.Should().Be(expectedOptions.SnackbarConfiguration.InfoIcon);
+        actualSnackBarOptions.SuccessIcon.Should().Be(expectedOptions.SnackbarConfiguration.SuccessIcon);
+        actualSnackBarOptions.WarningIcon.Should().Be(expectedOptions.SnackbarConfiguration.WarningIcon);
+        actualSnackBarOptions.ErrorIcon.Should().Be(expectedOptions.SnackbarConfiguration.ErrorIcon);
     }
 }

@@ -8,6 +8,11 @@ using MudBlazor.Utilities;
 namespace MudBlazor;
 
 #nullable enable
+
+/// <summary>
+/// A component for organizing the layout of page content.
+/// </summary>
+/// <seealso cref="MudItem"/>
 public partial class MudGrid : MudComponentBase
 {
     protected string Classname =>
@@ -27,7 +32,7 @@ public partial class MudGrid : MudComponentBase
     /// </remarks>
     [Parameter]
     [Category(CategoryTypes.Grid.Behavior)]
-    public int Spacing { set; get; } = 6;
+    public int Spacing { set; get; } = MudGlobal.GridDefaults.Spacing;
 
     /// <summary>
     /// Defines the distribution of children along the main axis within a <see cref="MudStack"/> component.

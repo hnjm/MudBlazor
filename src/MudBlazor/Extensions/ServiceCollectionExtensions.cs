@@ -242,6 +242,7 @@ namespace MudBlazor.Services
         public static IServiceCollection AddMudLocalization(this IServiceCollection services)
         {
             services.TryAddTransient<ILocalizationInterceptor, DefaultLocalizationInterceptor>();
+            services.TryAddTransient<ILocalizationEnumInterceptor, DefaultLocalizationEnumInterceptor>();
             services.TryAddTransient<InternalMudLocalizer>();
 
             return services;
@@ -250,7 +251,7 @@ namespace MudBlazor.Services
         /// <summary>
         /// Replaces the default <see cref="ILocalizationInterceptor"/> with custom implementation.
         /// </summary>
-        /// <typeparam name="TInterceptor">Custom <see cref="ILocalizationInterceptor"/> implentation.</typeparam>
+        /// <typeparam name="TInterceptor">Custom <see cref="ILocalizationInterceptor"/> implementation.</typeparam>
         /// <param name="services">IServiceCollection</param>
         /// <returns>Continues the IServiceCollection chain.</returns>
         public static IServiceCollection AddLocalizationInterceptor<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TInterceptor>(this IServiceCollection services) where TInterceptor : class, ILocalizationInterceptor
@@ -261,15 +262,42 @@ namespace MudBlazor.Services
         }
 
         /// <summary>
+        /// Replaces the default <see cref="ILocalizationEnumInterceptor"/> with custom implementation.
+        /// </summary>
+        /// <typeparam name="TInterceptor">Custom <see cref="ILocalizationEnumInterceptor"/> implementation.</typeparam>
+        /// <param name="services">IServiceCollection</param>
+        /// <returns>Continues the IServiceCollection chain.</returns>
+        public static IServiceCollection AddLocalizationEnumInterceptor<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TInterceptor>(this IServiceCollection services) where TInterceptor : class, ILocalizationEnumInterceptor
+        {
+            services.Replace(ServiceDescriptor.Transient<ILocalizationEnumInterceptor, TInterceptor>());
+
+            return services;
+        }
+
+        /// <summary>
         /// Replaces the default <see cref="ILocalizationInterceptor"/> with custom implementation.
         /// </summary>
-        /// <typeparam name="TInterceptor">Custom <see cref="ILocalizationInterceptor"/> implentation.</typeparam>
+        /// <typeparam name="TInterceptor">Custom <see cref="ILocalizationInterceptor"/> implementation.</typeparam>
         /// <param name="services">IServiceCollection</param>
         /// <param name="implementationFactory">A factory to create new instances of the <see cref="ILocalizationInterceptor"/> implementation.</param>
         /// <returns>Continues the IServiceCollection chain.</returns>
         public static IServiceCollection AddLocalizationInterceptor<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TInterceptor>(this IServiceCollection services, Func<IServiceProvider, TInterceptor> implementationFactory) where TInterceptor : class, ILocalizationInterceptor
         {
             services.Replace(ServiceDescriptor.Transient<ILocalizationInterceptor>(implementationFactory));
+
+            return services;
+        }
+
+        /// <summary>
+        /// Replaces the default <see cref="ILocalizationEnumInterceptor"/> with custom implementation.
+        /// </summary>
+        /// <typeparam name="TInterceptor">Custom <see cref="ILocalizationEnumInterceptor"/> implementation.</typeparam>
+        /// <param name="services">IServiceCollection</param>
+        /// <param name="implementationFactory">A factory to create new instances of the <see cref="ILocalizationEnumInterceptor"/> implementation.</param>
+        /// <returns>Continues the IServiceCollection chain.</returns>
+        public static IServiceCollection AddLocalizationEnumInterceptor<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicConstructors)] TInterceptor>(this IServiceCollection services, Func<IServiceProvider, TInterceptor> implementationFactory) where TInterceptor : class, ILocalizationEnumInterceptor
+        {
+            services.Replace(ServiceDescriptor.Transient<ILocalizationEnumInterceptor>(implementationFactory));
 
             return services;
         }
@@ -282,6 +310,7 @@ namespace MudBlazor.Services
         public static IServiceCollection AddMudServices(this IServiceCollection services)
         {
             return services
+                .AddCommonServices()
                 .AddMudBlazorDialog()
                 .AddMudBlazorSnackbar()
                 .AddMudBlazorResizeListener()
@@ -312,6 +341,7 @@ namespace MudBlazor.Services
             configuration(options);
 
             return services
+                .AddCommonServices()
                 .AddMudBlazorDialog()
                 .AddMudBlazorSnackbar(snackBarConfiguration =>
                 {
@@ -328,6 +358,12 @@ namespace MudBlazor.Services
                     snackBarConfiguration.RequireInteraction = options.SnackbarConfiguration.RequireInteraction;
                     snackBarConfiguration.BackgroundBlurred = options.SnackbarConfiguration.BackgroundBlurred;
                     snackBarConfiguration.SnackbarVariant = options.SnackbarConfiguration.SnackbarVariant;
+                    snackBarConfiguration.IconSize = options.SnackbarConfiguration.IconSize;
+                    snackBarConfiguration.NormalIcon = options.SnackbarConfiguration.NormalIcon;
+                    snackBarConfiguration.InfoIcon = options.SnackbarConfiguration.InfoIcon;
+                    snackBarConfiguration.SuccessIcon = options.SnackbarConfiguration.SuccessIcon;
+                    snackBarConfiguration.WarningIcon = options.SnackbarConfiguration.WarningIcon;
+                    snackBarConfiguration.ErrorIcon = options.SnackbarConfiguration.ErrorIcon;
                 })
                 .AddMudBlazorResizeListener(resizeOptions =>
                 {
@@ -364,6 +400,13 @@ namespace MudBlazor.Services
                 .AddMudBlazorScrollSpy()
                 .AddMudEventManager()
                 .AddMudLocalization();
+        }
+
+        private static IServiceCollection AddCommonServices(this IServiceCollection service)
+        {
+            service.TryAddSingleton(TimeProvider.System);
+
+            return service;
         }
     }
 }

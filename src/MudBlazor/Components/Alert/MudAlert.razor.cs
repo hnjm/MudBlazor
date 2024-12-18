@@ -12,19 +12,20 @@ namespace MudBlazor
     /// <summary>
     /// Represents an alert used to display an important message which is statically embedded in the page content.
     /// </summary>
+    /// <seealso cref="SnackbarService"/>
     public partial class MudAlert : MudComponentBase
     {
         protected string Classname => new CssBuilder("mud-alert")
-          .AddClass($"mud-alert-{Variant.ToDescriptionString()}-{Severity.ToDescriptionString()}")
-          .AddClass($"mud-dense", Dense)
-          .AddClass($"mud-square", Square)
-          .AddClass($"mud-elevation-{Elevation}")
-          .AddClass(Class)
-          .Build();
+            .AddClass($"mud-alert-{Variant.ToDescriptionString()}-{Severity.ToDescriptionString()}")
+            .AddClass($"mud-dense", Dense)
+            .AddClass($"mud-square", Square)
+            .AddClass($"mud-elevation-{Elevation}")
+            .AddClass(Class)
+            .Build();
 
         protected string ClassPosition => new CssBuilder("mud-alert-position")
-          .AddClass($"justify-sm-{ConvertHorizontalAlignment(ContentAlignment).ToDescriptionString()}")
-          .Build();
+            .AddClass($"justify-sm-{ConvertHorizontalAlignment(ContentAlignment).ToDescriptionString()}")
+            .Build();
 
         /// <summary>
         /// Gets the horizontal alignment to use based on the current right-to-left setting.

@@ -1,30 +1,80 @@
-﻿using Microsoft.AspNetCore.Components;
+﻿// Copyright (c) MudBlazor 2021
+// MudBlazor licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
+
+using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using MudBlazor.Interfaces;
+using MudBlazor.State;
 using MudBlazor.Utilities;
 
 namespace MudBlazor
 {
 #nullable enable
-
     /// <summary>
-    /// A list of choices displayed after clicking an element.
+    /// An interactive menu that displays a list of options.
     /// </summary>
     /// <seealso cref="MudMenuItem" />
-    public partial class MudMenu : MudComponentBase, IActivatable
+    public partial class MudMenu : MudComponentBase, IActivatable, IDisposable
     {
-        private string? _popoverStyle;
-        private bool _isTemporary;
+        private readonly ParameterState<bool> _openState;
+        private readonly List<MudMenu> _children = [];
+        private (double Top, double Left) _openPosition;
         private bool _isPointerOver;
+        private bool _isTransient;
+        private CancellationTokenSource? _hoverCts;
+        private CancellationTokenSource? _leaveCts;
 
+        public MudMenu()
+        {
+            using var registerScope = CreateRegisterScope();
+            _openState = registerScope.RegisterParameter<bool>(nameof(Open))
+                .WithParameter(() => Open)
+                .WithEventCallback(() => OpenChanged)
+                .WithChangeHandler(OnOpenChanged);
+        }
+
+        /// <summary>
+        /// The CSS class for the root menu container.
+        /// </summary>
         protected string Classname =>
             new CssBuilder("mud-menu")
+                .AddClass("mud-menu-button-hidden", GetActivatorHidden())
                 .AddClass(Class)
                 .Build();
 
+        /// <summary>
+        /// The CSS class for the menu's popover container.
+        /// </summary>
+        protected string PopoverClassname =>
+            new CssBuilder()
+                .AddClass(PopoverClass)
+                .AddClass("mud-popover-position-override", PositionAtCursor)
+                .Build();
+
+        /// <summary>
+        /// The CSS class for the list containing menu items.
+        /// </summary>
+        protected string ListClassname =>
+            new CssBuilder("mud-menu-list")
+                .AddClass(ListClass)
+                .Build();
+
+        /// <summary>
+        /// The CSS class for the activator element (button or custom content).
+        /// </summary>
         protected string ActivatorClassname =>
             new CssBuilder("mud-menu-activator")
                 .AddClass("mud-disabled", Disabled)
+                .Build();
+
+        /// <summary>
+        /// Inline styles for positioning the menu at the cursor's location.
+        /// </summary>
+        protected string Stylename =>
+            new StyleBuilder()
+                .AddStyle("top", _openPosition.Top.ToPx(), PositionAtCursor)
+                .AddStyle("left", _openPosition.Left.ToPx(), PositionAtCursor)
                 .Build();
 
         /// <summary>
@@ -195,11 +245,11 @@ namespace MudBlazor
         /// The point where the menu will open from.
         /// </summary>
         /// <remarks>
-        /// Defaults to <see cref="Origin.TopLeft"/>.
+        /// Defaults to <see cref="Origin.BottomLeft"/>.
         /// </remarks>
         [Parameter]
         [Category(CategoryTypes.Menu.PopupAppearance)]
-        public Origin AnchorOrigin { get; set; } = Origin.TopLeft;
+        public Origin AnchorOrigin { get; set; } = Origin.BottomLeft;
 
         /// <summary>
         /// Sets the direction the menu will open from the anchor.
@@ -259,85 +309,137 @@ namespace MudBlazor
         public RenderFragment? ChildContent { get; set; }
 
         /// <summary>
-        /// Occurs when <see cref="Open"/> has changed.
-        /// </summary>
-        [Parameter]
-        [Category(CategoryTypes.Menu.PopupBehavior)]
-        public EventCallback<bool> OpenChanged { get; set; }
-
-        /// <summary>
-        /// Whether this menu is open.
+        /// Whether this menu is open and the menu items are visible.
         /// </summary>
         /// <remarks>
         /// When this property changes, <see cref="OpenChanged"/> occurs.
         /// </remarks>
-        public bool Open { get; private set; }
+        [Parameter]
+        [Category(CategoryTypes.Menu.PopupBehavior)]
+        public bool Open { get; set; }
 
         /// <summary>
-        /// Closes this menu.
+        /// Occurs when <see cref="Open"/> has changed.
         /// </summary>
-        public Task CloseMenuAsync()
-        {
-            Open = false;
-            _isPointerOver = false;
-            _popoverStyle = null;
-            StateHasChanged();
+        [Parameter]
+        public EventCallback<bool> OpenChanged { get; set; }
 
-            return OpenChanged.InvokeAsync(Open);
+        [CascadingParameter]
+        protected MudMenu? ParentMenu { get; set; }
+
+        public IReadOnlyList<MudMenu> GetChildren() => _children.AsReadOnly();
+
+        protected bool GetActivatorHidden() => ActivatorContent is null && string.IsNullOrWhiteSpace(Label) && string.IsNullOrWhiteSpace(Icon);
+
+        protected void RegisterChild(MudMenu child)
+        {
+            _children.Add(child);
+        }
+
+        protected void UnregisterChild(MudMenu child)
+        {
+            _children.Remove(child);
+        }
+
+        protected override void OnInitialized()
+        {
+            base.OnInitialized();
+            ParentMenu?.RegisterChild(this);
+        }
+
+        protected Task OnOpenChanged(ParameterChangedEventArgs<bool> args)
+        {
+            return args.Value ?
+                OpenMenuAsync(EventArgs.Empty) :
+                CloseMenuAsync();
         }
 
         /// <summary>
-        /// Opens this menu.
+        /// Closes this menu and all its child menus.
         /// </summary>
-        /// <param name="args">The <see cref="MouseEventArgs"/> or <see cref="PointerEventArgs"/> of the location of the click.
-        /// When <see cref="PositionAtCursor"/> is <c>true</c>, the menu will be positioned at these coordinates.
+        public async Task CloseMenuAsync()
+        {
+            // Recursively close all child menus.
+            foreach (var child in _children)
+            {
+                await child.CloseMenuAsync();
+            }
+
+            // Don't close if already closed.
+            if (!_openState.Value)
+            {
+                return;
+            }
+
+            await _openState.SetValueAsync(false);
+            await InvokeAsync(StateHasChanged);
+        }
+
+        /// <summary>
+        /// Closes all menus in the hierarchy, starting from the top-most parent.
+        /// </summary>
+        public async Task CloseAllMenusAsync()
+        {
+            // Traverse up the menu hierarchy to find the top-most parent.
+            var top = this;
+            while (true)
+            {
+                if (top.ParentMenu is null)
+                {
+                    break;
+                }
+
+                top = top.ParentMenu;
+            }
+
+            // Close the top-most menu, which will cascade down to close all its children.
+            await top.CloseMenuAsync();
+        }
+
+        /// <summary>
+        /// Opens the menu.
+        /// </summary>
+        /// <param name="args">
+        /// <para>The event arguments for the activation event; <see cref="MouseEventArgs"/> or <see cref="TouchEventArgs"/>.</para>
+        /// <para>When <see cref="PositionAtCursor"/> is <c>true</c>, the menu will be positioned at these coordinates.</para>
         /// </param>
-        /// <param name="temporary">
-        /// Defaults to <c>false</c>.  When <c>true</c>, no overlay will be displayed.
-        /// This is typically used for menus which only open while the cursor is over them.
-        /// </param>
-        public Task OpenMenuAsync(EventArgs args, bool temporary = false)
+        /// <param name="transient">If <c>true</c>, the menu will close automatically when the pointer leaves its bounds.</param>
+        /// <remarks>
+        /// Parents are not automatically opened when a child is opened.
+        /// </remarks>
+        public async Task OpenMenuAsync(EventArgs args, bool transient = false)
         {
             if (Disabled)
             {
-                return Task.CompletedTask;
+                return;
             }
 
-            _isTemporary = temporary;
+            // Update the transient flag (used for hover-activated menus).
+            _isTransient = transient;
 
-            if (PositionAtCursor)
+            // Set the menu position if the event has cursor coordinates.
+            if (args is MouseEventArgs mouseEventArgs)
             {
-                if (args is MouseEventArgs mouseEventArgs)
-                {
-                    SetPopoverStyle(mouseEventArgs);
-                }
+                _openPosition = (mouseEventArgs.PageY, mouseEventArgs.PageX);
             }
 
-            // Don't open if already open, but let the stuff above get updated.
-            if (Open)
+            // Don't open if already open. But let the stuff above get updated.
+            if (_openState.Value)
             {
-                return Task.CompletedTask;
+                return;
             }
 
-            Open = true;
-            StateHasChanged();
-
-            return OpenChanged.InvokeAsync(Open);
+            await _openState.SetValueAsync(true);
+            await InvokeAsync(StateHasChanged);
         }
 
         /// <summary>
-        /// Sets the popover style ONLY when there is an activator.
+        /// Toggles the menu's open or closed state.
         /// </summary>
-        private void SetPopoverStyle(MouseEventArgs args)
-        {
-            AnchorOrigin = Origin.TopLeft;
-            _popoverStyle = $"margin-top: {args?.OffsetY.ToPx()}; margin-left: {args?.OffsetX.ToPx()};";
-        }
-
-        /// <summary>
-        /// Shows or hides this menu.
-        /// </summary>
-        /// <param name="args">The <see cref="MouseEventArgs"/> or <see cref="TouchEventArgs"/> with the location of the click.</param>
+        /// <param name="args">
+        /// <para>The event arguments for the activation event; <see cref="MouseEventArgs"/> or <see cref="TouchEventArgs"/>.</para>
+        /// <para>When <see cref="PositionAtCursor"/> is <c>true</c>, the menu will be positioned at these coordinates.</para>
+        /// </param>
         public Task ToggleMenuAsync(EventArgs args)
         {
             if (Disabled)
@@ -347,37 +449,54 @@ namespace MudBlazor
 
             if (args is MouseEventArgs mouseEventArgs)
             {
+                // Determine if the click matches the expected activation event.
                 var leftClick = ActivationEvent == MouseEvent.LeftClick && mouseEventArgs.Button == 0;
                 var rightClick = ActivationEvent == MouseEvent.RightClick && (mouseEventArgs.Button is -1 or 2); // oncontextmenu is -1, right click is 2.
 
-                // Only allow valid left or right conditions, except MouseOver activation which should always be allowed to toggle.
+                // For events other than MouseOver, ignore invalid click types.
                 if (!leftClick && !rightClick && ActivationEvent != MouseEvent.MouseOver)
                 {
                     return Task.CompletedTask;
                 }
             }
 
-            if (Open)
-            {
-                return CloseMenuAsync();
-            }
-            else
-            {
-                return OpenMenuAsync(args);
-            }
+            // Toggle the menu's state: close if open, open if closed.
+            return _openState.Value
+                ? CloseMenuAsync()
+                : OpenMenuAsync(args);
         }
 
         private async Task PointerEnterAsync(PointerEventArgs args)
         {
-            // The Enter event will be interfere with the Click event on devices that can't hover.
-            if (args.PointerType is "touch" or "pen")
+            _isPointerOver = true;
+
+            // Cancel any existing leave delay to prevent premature closure.
+            // ReSharper disable MethodHasAsyncOverload
+            _leaveCts?.Cancel();
+
+            // Start a new hover delay.
+            _hoverCts?.Cancel();
+            // ReSharper restore MethodHasAsyncOverload
+            _hoverCts = new();
+
+            try
+            {
+                // Wait a bit to allow the cursor to move over the activator if the user isn't trying to open it.
+                await Task.Delay(MudGlobal.MenuDefaults.HoverDelay, _hoverCts.Token);
+            }
+            catch (TaskCanceledException)
+            {
+                // Hover action was canceled.
+                return;
+            }
+
+            if (_openState.Value || ActivationEvent != MouseEvent.MouseOver)
             {
                 return;
             }
 
-            _isPointerOver = true;
-
-            if (Open || ActivationEvent != MouseEvent.MouseOver)
+            // The click event will conflict with the Enter event on devices that can't hover.
+            if (args.PointerType is "touch" or "pen")
             {
                 return;
             }
@@ -387,24 +506,38 @@ namespace MudBlazor
 
         private async Task PointerLeaveAsync()
         {
-            // There's no reason to handle the leave event if the pointer never entered the menu.
-            if (!_isPointerOver)
+            _isPointerOver = false;
+
+            // Don't close if the menu isn't transient (hover-based menus).
+            if (!_isTransient)
             {
                 return;
             }
 
-            _isPointerOver = false;
+            // Cancel any existing mouse hover delay.
+            // ReSharper disable MethodHasAsyncOverload
+            _hoverCts?.Cancel();
 
-            if (_isTemporary && ActivationEvent == MouseEvent.MouseOver)
+            // Start a leave delay to allow for re-entry.
+            _leaveCts?.Cancel();
+            // ReSharper restore MethodHasAsyncOverload
+            _leaveCts = new();
+
+            try
             {
                 // Wait a bit to allow the cursor to move from the activator to the items popover.
-                await Task.Delay(100);
+                await Task.Delay(MudGlobal.MenuDefaults.HoverDelay, _leaveCts.Token);
+            }
+            catch (TaskCanceledException)
+            {
+                // Leave action was canceled.
+                return;
+            }
 
-                // Close the menu if, since the delay, the pointer hasn't re-entered the menu or the overlay was made persistent (because the activator was clicked).
-                if (!_isPointerOver && _isTemporary)
-                {
-                    await CloseMenuAsync();
-                }
+            // Close the menu only if no child menus are still active.
+            if (!_children.Any(x => x._isPointerOver))
+            {
+                await CloseMenuAsync();
             }
         }
 
@@ -414,6 +547,33 @@ namespace MudBlazor
         void IActivatable.Activate(object activator, MouseEventArgs args)
         {
             _ = ToggleMenuAsync(args);
+        }
+
+        /// <summary>
+        /// Disposes managed and unmanaged resources.
+        /// </summary>
+        /// <param name="disposing">Indicates if managed resources should be disposed.</param>
+        protected virtual void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                _hoverCts?.Cancel();
+                _hoverCts?.Dispose();
+
+                _leaveCts?.Cancel();
+                _leaveCts?.Dispose();
+
+                ParentMenu?.UnregisterChild(this);
+            }
+        }
+
+        /// <summary>
+        /// Releases resources used by the component.
+        /// </summary>
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
         }
     }
 }
