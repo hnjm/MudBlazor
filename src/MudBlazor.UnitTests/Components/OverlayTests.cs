@@ -152,8 +152,7 @@ public class OverlayTests : BunitTest
 
     [Test]
     [TestCase(true, "", false, 0)] // Absolute is true
-    [TestCase(false, "mud-overlay-dialog", false, 1)] // Dialog
-    [TestCase(false, "mud-drawer-overlay", false, 2)] // Overlay
+    [TestCase(false, "mud-skip-overlay-section", false, 1)] // Dialog
     [TestCase(false, "", true, 3)]  // Child content
     [TestCase(false, "", false, 4)] // no exception
     public void ShouldRender_SectionLocation(bool absolute, string expectedClass, bool hasChildContent, int testNum)
@@ -197,7 +196,7 @@ public class OverlayTests : BunitTest
             case 2:
                 countInProvider.Count.Should().Be(0);
                 countInComp.Count.Should().Be(1);
-                comp.Instance.RenderOutsideOfSection.Should().BeTrue();
+                comp.Instance.RenderOutsideOfSection.Should().BeFalse();
                 break;
             case 3:
                 countInProvider.Count.Should().Be(0);

@@ -366,6 +366,18 @@ namespace MudBlazor
         public RenderFragment? ProgressIndicatorInPopoverTemplate { get; set; }
 
         /// <summary>
+        /// Determines the width of this Popover dropdown in relation to the parent container.
+        /// </summary>
+        /// <remarks>
+        /// <para>Defaults to <see cref="DropdownWidth.Relative" />. </para>
+        /// <para>When <see cref="DropdownWidth.Relative" />, restricts the max-width of the component to the width of the parent container</para>
+        /// <para>When <see cref="DropdownWidth.Adaptive" />, restricts the min-width of the component to the width of the parent container</para>
+        /// </remarks>
+        [Parameter]
+        [Category(CategoryTypes.Popover.Appearance)]
+        public DropdownWidth RelativeWidth { get; set; } = DropdownWidth.Relative;
+
+        /// <summary>
         /// Overrides the <c>Text</c> property when an item is selected.
         /// </summary>
         /// <remarks>
@@ -394,7 +406,7 @@ namespace MudBlazor
         /// </remarks>
         [Category(CategoryTypes.Popover.Behavior)]
         [Parameter]
-        public DropdownSettings DropdownSettings { get; set; }
+        public DropdownSettings DropdownSettings { get; set; } = new DropdownSettings();
 
         /// <summary>
         /// The function used to determine if an item should be disabled.
@@ -881,8 +893,18 @@ namespace MudBlazor
 
             _selectedListItemIndex = index;
 
+            return ScrollToListItemAsync(index);
+        }
+
+        /// <summary>
+        /// Scrolls the list of items to the item at the specified index.
+        /// </summary>
+        /// <param name="index">The index of the item to scroll to.</param>
+        public ValueTask ScrollToListItemAsync(int index)
+        {
             var id = GetListItemId(index);
 
+            //id of the scrolled element
             return ScrollManager.ScrollToListItemAsync(id);
         }
 
@@ -948,6 +970,19 @@ namespace MudBlazor
             if (openMenu)
             {
                 await OpenMenuAsync();
+            }
+        }
+
+        internal async Task AdornmentClickHandlerAsync()
+        {
+            if (OnAdornmentClick.HasDelegate)
+            {
+                await FocusAsync();
+                await OnAdornmentClick.InvokeAsync();
+            }
+            else
+            {
+                await ToggleMenuAsync();
             }
         }
 
