@@ -5,6 +5,10 @@ using Bunit;
 using FluentAssertions;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.JSInterop;
+using Microsoft.JSInterop.Infrastructure;
+using Moq;
 using MudBlazor.UnitTests.TestComponents.Table;
 using NUnit.Framework;
 
@@ -13,6 +17,15 @@ namespace MudBlazor.UnitTests.Components
     [TestFixture]
     public class TableTests : BunitTest
     {
+        [Test]
+        public void CustomTableClass()
+        {
+            var comp = Context.RenderComponent<TableRowClickTest>();
+            var table = comp.FindComponent<MudTable<int>>();
+            table.SetParametersAndRender(parameters => parameters.Add(x => x.TableClass, "table-custom-class"));
+            table.Markup.Should().Contain("class=\"mud-table-root table-custom-class\"");
+        }
+
         /// <summary>
         /// OnRowClick event callback should be fired regardless of the selection state
         /// </summary>
@@ -113,24 +126,6 @@ namespace MudBlazor.UnitTests.Components
             comp.FindAll("td")[0].TextContent.Trim().Should().Be("C");
             comp.FindAll("td")[1].TextContent.Trim().Should().Be("B");
             comp.FindAll("td")[2].TextContent.Trim().Should().Be("A");
-        }
-
-        [Theory]
-        [TestCase(true)]
-        [TestCase(false)]
-        public void TableSortLabel(bool sortEnabled)
-        {
-            // Arrange
-            var comp = Context.RenderComponent<TableSortLabelTest>(
-                parameters => parameters.Add(x => x.SortEnabled, sortEnabled));
-            var tableSortLabel = comp.FindComponent<MudTableSortLabel<string>>();
-
-            // Assert
-            tableSortLabel
-                .Find("span")
-                .GetAttribute("class")
-                .Contains("mud-button-root")
-                .Should().Be(sortEnabled);
         }
 
         /// <summary>
@@ -265,7 +260,7 @@ namespace MudBlazor.UnitTests.Components
         }
 
         /// <summary>
-        /// Check if if empty row text is correct
+        /// Check if empty row text is correct when using LoadingContent
         /// </summary>
         [Test]
         public void TableHeadContentTest()
@@ -288,6 +283,40 @@ namespace MudBlazor.UnitTests.Components
             switchElement.Change(true);
             comp.FindAll("tr").Count.Should().Be(3);
             comp.FindAll("tr")[2].TextContent.Should().Be("Loading...");
+        }
+
+        /// <summary>
+        /// Check if empty row text is correct when using LoadingContentBody
+        /// </summary>
+        [Test]
+        public void TableHeadContentBodyTest()
+        {
+            var comp = Context.RenderComponent<TableLoadingBodyTest>();
+            var searchString = comp.Find("#searchString");
+            var switchElement = comp.Find("#switch");
+
+            searchString.Input(null);
+            switchElement.Change(false);
+
+            // It should be equal to 3 = two rows + header row
+            comp.FindAll("tr").Count.Should().Be(3);
+
+            // There should be no skeletons.
+            comp.FindAll(".mud-skeleton").Count.Should().Be(0);
+
+            // Filter out all table rows
+            searchString.Input("ZZZ");
+
+            // It should be equal to 2 = two rows + header row
+            comp.FindAll("tr").Count.Should().Be(2);
+            comp.FindAll("tr")[1].TextContent.Should().Be("No matching records found");
+
+            // It should be equal to 6 = 4 loading rows + header row + loading row
+            switchElement.Change(true);
+            comp.FindAll("tr").Count.Should().Be(6);
+
+            // It should be equal to 20 = 4 rows * 5 colmns
+            comp.FindAll(".mud-skeleton").Count.Should().Be(20);
         }
 
         /// <summary>
@@ -1315,25 +1344,25 @@ namespace MudBlazor.UnitTests.Components
             var comp = Context.RenderComponent<TableServerSideDataTest5>();
             comp.Find("#counter").TextContent.Should().Be("1"); //initial counter
 
-            comp.Find("span.mud-button-root.mud-table-sort-label").Click(); // sort
+            comp.Find("span.mud-clickable.mud-table-sort-label").Click(); // sort
             comp.Find("#counter").TextContent.Should().Be("2");
 
-            comp.Find("span.mud-button-root.mud-table-sort-label").Click(); // sort
+            comp.Find("span.mud-clickable.mud-table-sort-label").Click(); // sort
             comp.Find("#counter").TextContent.Should().Be("3");
 
-            comp.Find("span.mud-button-root.mud-table-sort-label").Click(); // sort
+            comp.Find("span.mud-clickable.mud-table-sort-label").Click(); // sort
             comp.Find("#counter").TextContent.Should().Be("4");
 
             comp.Find("#reseter").Click(); //reset counter and test again
             comp.Find("#counter").TextContent.Should().Be("0");
 
-            comp.Find("span.mud-button-root.mud-table-sort-label").Click(); // sort
+            comp.Find("span.mud-clickable.mud-table-sort-label").Click(); // sort
             comp.Find("#counter").TextContent.Should().Be("1");
 
-            comp.Find("span.mud-button-root.mud-table-sort-label").Click(); // sort
+            comp.Find("span.mud-clickable.mud-table-sort-label").Click(); // sort
             comp.Find("#counter").TextContent.Should().Be("2");
 
-            comp.Find("span.mud-button-root.mud-table-sort-label").Click(); // sort
+            comp.Find("span.mud-clickable.mud-table-sort-label").Click(); // sort
             comp.Find("#counter").TextContent.Should().Be("3");
         }
 
@@ -2126,6 +2155,128 @@ namespace MudBlazor.UnitTests.Components
         }
 
         /// <summary>
+        /// A table with 3 unexpanded groups. The first group is expanded, next removed.
+        /// The other groups remain unexpanded.
+        /// </summary>
+        /// <remarks>
+        /// https://github.com/MudBlazor/MudBlazor/issues/10250
+        /// </remarks>
+        [Test]
+        public void TableGrouping_ExpandFirstGroupAndRemoveIt_OtherGroupsRemainUnexpanded()
+        {
+            // Arrange
+
+            var comp = Context.RenderComponent<TableGroupingTest3>();
+            var table = comp.Instance.TableInstance;
+            comp.Render();
+
+            // Assert : Three groups are unexpanded
+
+            table.Context.GroupRows.Count.Should().Be(3);
+            table.Context.GroupRows.ElementAt(0).Expanded.Should().BeFalse();
+            table.Context.GroupRows.ElementAt(1).Expanded.Should().BeFalse();
+            table.Context.GroupRows.ElementAt(2).Expanded.Should().BeFalse();
+
+            // Act : Expend the first group
+
+            comp.FindAll("button")[0].Click();
+
+            // Assert : Only the first group is expanded
+
+            table.Context.GroupRows.Count.Should().Be(3);
+            table.Context.GroupRows.ElementAt(0).Expanded.Should().BeTrue();
+            table.Context.GroupRows.ElementAt(1).Expanded.Should().BeFalse();
+            table.Context.GroupRows.ElementAt(2).Expanded.Should().BeFalse();
+
+            // Act : Remove the first group
+
+            comp.Instance.Items.RemoveAll(i => i.Group == "One");
+            comp.Render();
+
+            // Assert : Two groups are unexpanded
+
+            table.Context.GroupRows.Count.Should().Be(2);
+            table.Context.GroupRows.ElementAt(0).Expanded.Should().BeFalse();
+            table.Context.GroupRows.ElementAt(1).Expanded.Should().BeFalse();
+        }
+
+        /// <summary>
+        /// A table with unexpanded groups and unexpanded nested groups.
+        /// The first group and its first nested group are expanded. Then remove the first nested group.
+        /// The other nested group remains unexpanded.
+        /// </summary>
+        /// <remarks>
+        /// https://github.com/MudBlazor/MudBlazor/issues/10250
+        /// </remarks>
+        [Test]
+        public void TableGrouping_ExpandFirstNestedGroupAndRemoveIt_OtherNestedGroupsRemainUnexpanded()
+        {
+            // Arrange
+
+            var comp = Context.RenderComponent<TableGroupingNestedTest>();
+            var table = comp.Instance.TableInstance;
+            comp.Render();
+
+            // Assert : All groups are unexpanded
+
+            {
+                var groups = table.Context.GroupRows;
+                groups.Count.Should().Be(3);
+                groups.Single(g => g.Items.Key.ToString() == "G1").Expanded.Should().BeFalse();
+                groups.Single(g => g.Items.Key.ToString() == "G2").Expanded.Should().BeFalse();
+                groups.Single(g => g.Items.Key.ToString() == "G3").Expanded.Should().BeFalse();
+            }
+
+            // Act : Expend the first group
+
+            comp.FindAll("button")[0].Click();
+
+            // Assert : Only the first group is expanded
+
+            {
+                var groups = table.Context.GroupRows;
+                groups.Count.Should().Be(5);
+                groups.Single(g => g.Items.Key.ToString() == "G1").Expanded.Should().BeTrue();
+                groups.Single(g => g.Items.Key.ToString() == "G1 > N1").Expanded.Should().BeFalse();
+                groups.Single(g => g.Items.Key.ToString() == "G1 > N2").Expanded.Should().BeFalse();
+                groups.Single(g => g.Items.Key.ToString() == "G2").Expanded.Should().BeFalse();
+                groups.Single(g => g.Items.Key.ToString() == "G3").Expanded.Should().BeFalse();
+            }
+
+            // Act : Expand the first nested group in the first group
+
+            comp.FindAll("button")[1].Click();
+
+            // Assert : Only the first group and its first nested group are expanded
+
+            {
+                var groups = table.Context.GroupRows;
+                groups.Count.Should().Be(5);
+                groups.Single(g => g.Items.Key.ToString() == "G1").Expanded.Should().BeTrue();
+                groups.Single(g => g.Items.Key.ToString() == "G1 > N1").Expanded.Should().BeTrue();
+                groups.Single(g => g.Items.Key.ToString() == "G1 > N2").Expanded.Should().BeFalse();
+                groups.Single(g => g.Items.Key.ToString() == "G2").Expanded.Should().BeFalse();
+                groups.Single(g => g.Items.Key.ToString() == "G3").Expanded.Should().BeFalse();
+            }
+
+            // Act : Remove the first nested group in first group
+
+            comp.Instance.Items.RemoveAll(i => i.Group == "G1" && i.Nested == "N1");
+            comp.Render();
+
+            // Assert : Only the first group is expanded and its remaining nested group is unexpanded
+
+            {
+                var groups = table.Context.GroupRows;
+                groups.Count.Should().Be(4);
+                groups.Single(g => g.Items.Key.ToString() == "G1").Expanded.Should().BeTrue();
+                groups.Single(g => g.Items.Key.ToString() == "G1 > N2").Expanded.Should().BeFalse();
+                groups.Single(g => g.Items.Key.ToString() == "G2").Expanded.Should().BeFalse();
+                groups.Single(g => g.Items.Key.ToString() == "G3").Expanded.Should().BeFalse();
+            }
+        }
+
+        /// <summary>
         /// Tests the grouping behavior and ensure that it won't break anything else.
         /// </summary>
         /// <returns></returns>
@@ -2219,10 +2370,10 @@ namespace MudBlazor.UnitTests.Components
         /// Tests the correct output when filter does not return any matching elements
         /// </summary>
         [Test]
-        public void TablePagerInfoTextTest()
+        public void TablePagerInfoTextTest1()
         {
             // create the component
-            var tableComponent = Context.RenderComponent<TablePagerInfoTextTest>();
+            var tableComponent = Context.RenderComponent<TablePagerInfoTextTest1>();
 
             // print the generated html
 
@@ -2251,6 +2402,23 @@ namespace MudBlazor.UnitTests.Components
         }
 
         /// <summary>
+        /// Tests the correct output when custom info format provided
+        /// </summary>
+        [Test]
+        [TestCase("", "1-3 of 3")]
+        [TestCase("Test", "Test")]
+        [TestCase("{first_item}-{last_item}/{all_items}", "1-3/3")]
+        public void TablePagerInfoTextTest2(string infoFormat, string expectedInfoText)
+        {
+            // create the component
+            var tableComponent = Context.RenderComponent<TablePagerInfoTextTest2>(parameters => parameters
+                .Add(p => p.InfoFormat, infoFormat));
+
+            // assert correct info-text
+            tableComponent.Find("div.mud-table-page-number-information").Text().Should().Be(expectedInfoText);
+        }
+
+        /// <summary>
         /// Tests the aria-labels for the pager control buttons
         /// </summary>
         /// <param name="controlButton">The type of the control button. Page.First for the navigate-to-first-page button.</param>
@@ -2262,7 +2430,7 @@ namespace MudBlazor.UnitTests.Components
         [Test]
         public void TablePagerControlButtonAriaLabelTest(Page controlButton, string expectedButtonAriaLabel)
         {
-            var tableComponent = Context.RenderComponent<TablePagerInfoTextTest>();
+            var tableComponent = Context.RenderComponent<TablePagerInfoTextTest1>();
 
             //get control button
             var buttons = tableComponent.FindAll("div.mud-table-pagination-actions button");
@@ -2536,6 +2704,340 @@ namespace MudBlazor.UnitTests.Components
             comp.FindAll(".mud-table-pagination-actions .mud-button-root")[2].Click();
             comp.WaitForAssertion(() => table.CurrentPage.Should().Be(2));
             comp.WaitForAssertion(() => comp.Find(".mud-table-body .mud-table-row .mud-table-cell").TextContent.Should().Be("3"));
+        }
+
+        /// <summary>
+        /// Table initialized to display the third page
+        /// </summary>
+        /// <remarks>
+        /// Table.CurrentPage start at 0, so 2 is the second page
+        /// https://github.com/MudBlazor/MudBlazor/issues/11727
+        /// </remarks>
+        [Test]
+        public void Table_WithCurrentPage_ShouldFirstRenderThisPage()
+        {
+            // Arrange
+
+            var comp = Context.RenderComponent<TableCurrentPageParameterIntialized>();
+            var table = comp.FindComponent<MudTable<int>>().Instance;
+
+            // Assert : DataGrid is initialized with CurrentPage at 2
+
+            table.CurrentPage.Should().Be(2);
+
+            // Assert : The first item in the third page is 20
+
+            comp.Find(".mud-table-body .mud-table-row .mud-table-cell").TextContent.Should().Be("20");
+        }
+
+        [Test]
+        [TestCase(SortDirection.None)]
+        [TestCase(SortDirection.Ascending)]
+        [TestCase(SortDirection.Descending)]
+        public void TableSortLabelDirectionClasses(SortDirection direction)
+        {
+            var comp = Context.RenderComponent<MudTableSortLabel<string>>(parameters => parameters
+                .Add(p => p.SortDirection, direction)
+            );
+
+            var icon = comp.Find(".mud-table-sort-label-icon");
+
+            icon.ClassList.Should().Contain("mud-table-sort-label-icon");
+            icon.ClassList.Contains("mud-direction-asc").Should().Be(direction == SortDirection.Ascending);
+            icon.ClassList.Contains("mud-direction-desc").Should().Be(direction == SortDirection.Descending);
+        }
+
+        private Mock<IScrollManager> _mockScrollManager = null!;
+
+        public class TestItem { public int Id { get; set; } public string Name { get; set; } }
+
+        private List<TestItem> GetTestItems(int count)
+        {
+            var items = new List<TestItem>();
+            for (int i = 1; i <= count; i++)
+            {
+                items.Add(new TestItem { Id = i, Name = $"Item {i}" });
+            }
+            return items;
+        }
+
+        [SetUp]
+        public void SetupScrollManagerMock()
+        {
+            _mockScrollManager = new Mock<IScrollManager>();
+            Context.Services.AddSingleton(_mockScrollManager.Object);
+        }
+
+        [Test]
+        public async Task ScrollToItemAsync_NonVirtualized_ItemExists_CallsScrollIntoViewAsync()
+        {
+            // Arrange
+            var items = GetTestItems(10);
+            var itemToScrollTo = items[5]; // 6th item, index 5
+
+            var comp = Context.RenderComponent<MudTable<TestItem>>(parameters => parameters
+                .Add(p => p.Items, items)
+                .Add(p => p.Virtualize, false) // Ensure non-virtualized
+                .Add(p => p.RowTemplate, (context) => builder =>
+                {
+                    builder.OpenComponent<MudTd>(0);
+                    builder.AddAttribute(1, "ChildContent", (RenderFragment)(b => b.AddContent(2, context.Name)));
+                    builder.CloseComponent();
+                }));
+
+            var tableInstance = comp.Instance;
+
+
+            // Act
+            await comp.InvokeAsync(() => tableInstance.ScrollToItemAsync(itemToScrollTo));
+
+            // Assert
+            _mockScrollManager.Verify(sm => sm.ScrollIntoViewAsync(It.IsAny<string>(), It.IsAny<ScrollBehavior>()), Times.Once);
+            _mockScrollManager.Verify(sm => sm.ScrollToVirtualizedItemAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<double>(), It.IsAny<string>(), It.IsAny<ScrollBehavior>()), Times.Never);
+        }
+
+        [Test]
+        public async Task ScrollToItemAsync_Virtualized_ItemExists_CallsScrollToVirtualizedItemAsync()
+        {
+            // Arrange
+            var items = GetTestItems(50); // Larger list for virtualization
+            var itemToScrollTo = items[25];
+
+            var comp = Context.RenderComponent<MudTable<TestItem>>(parameters => parameters
+                .Add(p => p.Items, items)
+                .Add(p => p.Virtualize, true)
+                .Add(p => p.FixedHeader, true)
+                .Add(p => p.Height, "300px")
+                .Add(p => p.HeaderContent, builder =>
+                {
+                    builder.OpenComponent<MudTh>(0); builder.AddAttribute(1, "ChildContent", (RenderFragment)(b => b.AddContent(2, "Name"))); builder.CloseComponent();
+                })
+                .Add(p => p.RowTemplate, (context) => builder =>
+                {
+                    builder.OpenComponent<MudTd>(0);
+                    builder.AddAttribute(1, "ChildContent", (RenderFragment)(b => b.AddContent(2, context.Name)));
+                    builder.CloseComponent();
+                }));
+
+            var tableInstance = comp.Instance;
+
+            // Act
+            await comp.InvokeAsync(() => tableInstance.ScrollToItemAsync(itemToScrollTo));
+
+            // Assert
+            _mockScrollManager.Verify(sm => sm.ScrollIntoViewAsync(It.IsAny<string>(), It.IsAny<ScrollBehavior>()), Times.Never);
+            _mockScrollManager.Verify(sm => sm.ScrollToVirtualizedItemAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<double>(), It.IsAny<string>(), It.IsAny<ScrollBehavior>()), Times.Once);
+        }
+
+        [Test]
+        public async Task ScrollToItemAsync_ItemNotFound_NonVirtualized_DoesNotCallScrollManager()
+        {
+            // Arrange
+            var items = GetTestItems(5);
+            var itemToScrollTo = new TestItem { Id = 99, Name = "NonExistent" };
+
+            var comp = Context.RenderComponent<MudTable<TestItem>>(parameters => parameters
+                .Add(p => p.Items, items)
+                .Add(p => p.Virtualize, false)
+                .Add(p => p.HeaderContent, builder =>
+                 {
+                     builder.OpenComponent<MudTh>(0); builder.AddAttribute(1, "ChildContent", (RenderFragment)(b => b.AddContent(2, "Name"))); builder.CloseComponent();
+                 })
+                .Add(p => p.RowTemplate, (context) => builder =>
+                {
+                    builder.OpenComponent<MudTd>(0); builder.AddAttribute(1, "ChildContent", (RenderFragment)(b => b.AddContent(2, context.Name))); builder.CloseComponent();
+                }));
+            var tableInstance = comp.Instance;
+
+            // Act
+            await comp.InvokeAsync(() => tableInstance.ScrollToItemAsync(itemToScrollTo));
+
+            // Assert
+            _mockScrollManager.Verify(sm => sm.ScrollIntoViewAsync(It.IsAny<string>(), It.IsAny<ScrollBehavior>()), Times.Never);
+            _mockScrollManager.Verify(sm => sm.ScrollToVirtualizedItemAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<double>(), It.IsAny<string>(), It.IsAny<ScrollBehavior>()), Times.Never);
+        }
+
+        [Test]
+        public async Task ScrollToItemAsync_ItemNotFound_Virtualized_DoesNotCallScrollManager()
+        {
+            // Arrange
+            var items = GetTestItems(5);
+            var itemToScrollTo = new TestItem { Id = 99, Name = "NonExistent" };
+
+            var comp = Context.RenderComponent<MudTable<TestItem>>(parameters => parameters
+                .Add(p => p.Items, items)
+                .Add(p => p.Virtualize, true)
+                .Add(p => p.Height, "300px")
+                .Add(p => p.FixedHeader, true)
+                .Add(p => p.HeaderContent, builder =>
+                 {
+                     builder.OpenComponent<MudTh>(0); builder.AddAttribute(1, "ChildContent", (RenderFragment)(b => b.AddContent(2, "Name"))); builder.CloseComponent();
+                 })
+                .Add(p => p.RowTemplate, (context) => builder =>
+                {
+                    builder.OpenComponent<MudTd>(0); builder.AddAttribute(1, "ChildContent", (RenderFragment)(b => b.AddContent(2, context.Name))); builder.CloseComponent();
+                }));
+            var tableInstance = comp.Instance;
+
+            // Act
+            await comp.InvokeAsync(() => tableInstance.ScrollToItemAsync(itemToScrollTo));
+
+            // Assert
+            _mockScrollManager.Verify(sm => sm.ScrollIntoViewAsync(It.IsAny<string>(), It.IsAny<ScrollBehavior>()), Times.Never);
+            _mockScrollManager.Verify(sm => sm.ScrollToVirtualizedItemAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<double>(), It.IsAny<string>(), It.IsAny<ScrollBehavior>()), Times.Never);
+        }
+
+        [Test]
+        public async Task FocusCellAsync_NonVirtualized_ItemAndCellExist_CallsScrollIntoViewAndJSRuntime()
+        {
+            // Arrange
+            var items = GetTestItems(10);
+            var itemToFocus = items[3];
+            var cellIndexToFocus = 0;
+            var jsRuntimeMock = new Mock<IJSRuntime>();
+
+            jsRuntimeMock.Setup(x => x.InvokeAsync<IJSVoidResult>("mudTableCell.focusCell", It.IsAny<object[]>()));
+
+            Context.Services.AddSingleton(jsRuntimeMock.Object);
+
+            var comp = Context.RenderComponent<MudTable<TestItem>>(parameters => parameters
+                .Add(p => p.Items, items)
+                .Add(p => p.Virtualize, false)
+                .Add(p => p.HeaderContent, builder =>
+                {
+                    builder.OpenComponent<MudTh>(0); builder.AddAttribute(1, "ChildContent", (RenderFragment)(b => b.AddContent(2, "Name"))); builder.CloseComponent();
+                })
+                .Add(p => p.RowTemplate, (context) => builder =>
+                {
+                    builder.OpenComponent<MudTd>(0);
+                    builder.AddAttribute(1, "ChildContent", (RenderFragment)(b => b.AddContent(2, context.Name)));
+                    builder.CloseComponent();
+                }));
+
+            var tableInstance = comp.Instance;
+
+            // Act
+            await comp.InvokeAsync(() => tableInstance.FocusCellAsync(itemToFocus, cellIndexToFocus));
+
+            // Assert
+            _mockScrollManager.Verify(sm => sm.ScrollIntoViewAsync(It.IsAny<string>(), It.IsAny<ScrollBehavior>()), Times.Once);
+            _mockScrollManager.Verify(sm => sm.ScrollToVirtualizedItemAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<double>(), It.IsAny<string>(), It.IsAny<ScrollBehavior>()), Times.Never);
+
+            jsRuntimeMock.Verify(x => x.InvokeAsync<IJSVoidResult>("mudTableCell.focusCell", It.IsAny<object[]>()), Times.Once);
+        }
+
+        [Test]
+        public async Task FocusCellAsync_Virtualized_ItemAndCellExist_CallsScrollToVirtualizedItemAndJSRuntime()
+        {
+            // Arrange
+            var items = GetTestItems(50);
+            var itemToFocus = items[25];
+            var cellIndexToFocus = 0;
+            var jsRuntimeMock = new Mock<IJSRuntime>();
+
+            jsRuntimeMock.Setup(x => x.InvokeAsync<IJSVoidResult>("mudTableCell.focusCell", It.IsAny<object[]>()));
+
+            Context.Services.AddSingleton(jsRuntimeMock.Object);
+
+            var comp = Context.RenderComponent<MudTable<TestItem>>(parameters => parameters
+                .Add(p => p.Items, items)
+                .Add(p => p.Virtualize, true)
+                .Add(p => p.FixedHeader, true)
+                .Add(p => p.Height, "300px")
+                .Add(p => p.HeaderContent, builder =>
+                {
+                    builder.OpenComponent<MudTh>(0); builder.AddAttribute(1, "ChildContent", (RenderFragment)(b => b.AddContent(2, "Name"))); builder.CloseComponent();
+                })
+                .Add(p => p.RowTemplate, (context) => builder =>
+                {
+                    builder.OpenComponent<MudTd>(0);
+                    builder.AddAttribute(1, "ChildContent", (RenderFragment)(b => b.AddContent(2, context.Name)));
+                    builder.CloseComponent();
+                }));
+
+            var tableInstance = comp.Instance;
+
+            // Act
+            await comp.InvokeAsync(() => tableInstance.FocusCellAsync(itemToFocus, cellIndexToFocus));
+
+            // Assert
+            _mockScrollManager.Verify(sm => sm.ScrollIntoViewAsync(It.IsAny<string>(), It.IsAny<ScrollBehavior>()), Times.Never);
+            _mockScrollManager.Verify(sm => sm.ScrollToVirtualizedItemAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<double>(), It.IsAny<string>(), It.IsAny<ScrollBehavior>()), Times.Once);
+
+            jsRuntimeMock.Verify(x => x.InvokeAsync<IJSVoidResult>("mudTableCell.focusCell", It.IsAny<object[]>()));
+        }
+
+
+        [Test]
+        public async Task FocusCellAsync_ItemNotFound_NonVirtualized_DoesNotCallScrollManagerOrJSRuntime()
+        {
+            // Arrange
+            var items = GetTestItems(5);
+            var itemToFocus = new TestItem { Id = 99, Name = "NonExistent" };
+            var cellIndexToFocus = 0;
+            var jsRuntimeMock = new Mock<IJSRuntime>();
+
+            jsRuntimeMock.Setup(x => x.InvokeAsync<IJSVoidResult>("mudTableCell.focusCell", It.IsAny<object[]>()));
+
+            Context.Services.AddSingleton(jsRuntimeMock.Object);
+
+            var comp = Context.RenderComponent<MudTable<TestItem>>(parameters => parameters
+                .Add(p => p.Items, items)
+                .Add(p => p.Virtualize, false)
+                .Add(p => p.HeaderContent, builder =>
+                {
+                    builder.OpenComponent<MudTh>(0); builder.AddAttribute(1, "ChildContent", (RenderFragment)(b => b.AddContent(2, "Name"))); builder.CloseComponent();
+                })
+                .Add(p => p.RowTemplate, (context) => builder =>
+                {
+                    builder.OpenComponent<MudTd>(0); builder.AddAttribute(1, "ChildContent", (RenderFragment)(b => b.AddContent(2, context.Name))); builder.CloseComponent();
+                }));
+            var tableInstance = comp.Instance;
+
+            // Act
+            await comp.InvokeAsync(() => tableInstance.FocusCellAsync(itemToFocus, cellIndexToFocus));
+
+            // Assert
+            _mockScrollManager.Verify(sm => sm.ScrollIntoViewAsync(It.IsAny<string>(), It.IsAny<ScrollBehavior>()), Times.Never);
+            _mockScrollManager.Verify(sm => sm.ScrollToVirtualizedItemAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<double>(), It.IsAny<string>(), It.IsAny<ScrollBehavior>()), Times.Never);
+            jsRuntimeMock.Verify(x => x.InvokeAsync<IJSVoidResult>("mudTableCell.focusCell", It.IsAny<object[]>()), Times.Never);
+        }
+
+        [Test]
+        public async Task FocusCellAsync_ItemNotFound_Virtualized_DoesNotCallScrollManagerOrJSRuntime()
+        {
+            // Arrange
+            var items = GetTestItems(5);
+            var itemToFocus = new TestItem { Id = 99, Name = "NonExistent" };
+            var cellIndexToFocus = 0;
+            var jsRuntimeMock = new Mock<IJSRuntime>();
+
+            jsRuntimeMock.Setup(x => x.InvokeAsync<IJSVoidResult>("mudTableCell.focusCell", It.IsAny<object[]>()));
+
+            Context.Services.AddSingleton(jsRuntimeMock.Object);
+
+            var comp = Context.RenderComponent<MudTable<TestItem>>(parameters => parameters
+                .Add(p => p.Items, items)
+                .Add(p => p.Virtualize, true)
+                .Add(p => p.Height, "300px")
+                .Add(p => p.FixedHeader, true)
+                .Add(p => p.HeaderContent, builder =>
+                {
+                    builder.OpenComponent<MudTh>(0); builder.AddAttribute(1, "ChildContent", (RenderFragment)(b => b.AddContent(2, "Name"))); builder.CloseComponent();
+                })
+                .Add(p => p.RowTemplate, (context) => builder =>
+                {
+                    builder.OpenComponent<MudTd>(0); builder.AddAttribute(1, "ChildContent", (RenderFragment)(b => b.AddContent(2, context.Name))); builder.CloseComponent();
+                }));
+            var tableInstance = comp.Instance;
+
+            // Act
+            await comp.InvokeAsync(() => tableInstance.FocusCellAsync(itemToFocus, cellIndexToFocus));
+
+            // Assert
+            _mockScrollManager.Verify(sm => sm.ScrollIntoViewAsync(It.IsAny<string>(), It.IsAny<ScrollBehavior>()), Times.Never);
+            _mockScrollManager.Verify(sm => sm.ScrollToVirtualizedItemAsync(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<double>(), It.IsAny<string>(), It.IsAny<ScrollBehavior>()), Times.Never);
+            jsRuntimeMock.Verify(x => x.InvokeAsync<IJSVoidResult>("mudTableCell.focusCell", It.IsAny<object[]>()), Times.Never);
         }
     }
 }

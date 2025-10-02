@@ -180,6 +180,48 @@ namespace MudBlazor.UnitTests.Components
         }
 
         /// <summary>
+        /// A required tristate checkbox must have a value of true or false, but not null.
+        /// </summary>
+        [Test]
+        public async Task TriStateCheckBoxFormTest()
+        {
+            var comp = Context.RenderComponent<CheckBoxFormTest2>();
+            var form = comp.FindComponent<MudForm>().Instance;
+            var checkbox = comp.FindComponent<MudCheckBox<bool?>>();
+
+            // initial state: null, form should be invalid without errors
+            form.IsValid.Should().BeFalse();
+            form.Errors.Length.Should().Be(0);
+
+            // after validating, the form should be invalid with errors
+            await comp.InvokeAsync(() => form.Validate());
+            form.IsValid.Should().BeFalse();
+            checkbox.Instance.Error.Should().BeTrue();
+            checkbox.Instance.ErrorText.Should().Be("You must select a value");
+
+            // state: true, form should be valid
+            checkbox.Find("input").Change(true);
+            await comp.InvokeAsync(() => form.Validate());
+            form.IsValid.Should().BeTrue();
+            checkbox.Instance.Error.Should().BeFalse();
+            checkbox.Instance.ErrorText.Should().BeNullOrEmpty();
+
+            // state: false, form should be valid
+            checkbox.Find("input").Change(false);
+            await comp.InvokeAsync(() => form.Validate());
+            form.IsValid.Should().BeTrue();
+            checkbox.Instance.Error.Should().BeFalse();
+            checkbox.Instance.ErrorText.Should().BeNullOrEmpty();
+
+            // state: null, form should be invalid again
+            checkbox.Find("input").Change(null);
+            await comp.InvokeAsync(() => form.Validate());
+            form.IsValid.Should().BeFalse();
+            checkbox.Instance.Error.Should().BeTrue();
+            checkbox.Instance.ErrorText.Should().Be("You must select a value");
+        }
+
+        /// <summary>
         /// Binding checkboxes two-way against an array of bools
         /// </summary>
         [Test]
@@ -355,46 +397,42 @@ namespace MudBlazor.UnitTests.Components
         }
 
         /// <summary>
-        /// Optional CheckBox should not have required attribute and aria-required should be false.
+        /// Optional CheckBox should not have required attribute.
         /// </summary>
         [Test]
-        public void OptionalCheckBox_Should_NotHaveRequiredAttributeAndAriaRequiredShouldBeFalse()
+        public void OptionalCheckBox_Should_NotHaveRequiredAttribute()
         {
             var comp = Context.RenderComponent<MudCheckBox<bool>>();
 
             comp.Find("input").HasAttribute("required").Should().BeFalse();
-            comp.Find("input").GetAttribute("aria-required").Should().Be("false");
         }
 
         /// <summary>
-        /// Required CheckBox should have required and aria-required attributes.
+        /// Required CheckBox should have required attribute.
         /// </summary>
         [Test]
-        public void RequiredCheckBox_Should_HaveRequiredAndAriaRequiredAttributes()
+        public void RequiredCheckBox_Should_HaveRequiredAttribute()
         {
             var comp = Context.RenderComponent<MudCheckBox<bool>>(parameters => parameters
                 .Add(p => p.Required, true));
             comp.Find("input").HasAttribute("required").Should().BeTrue();
-            comp.Find("input").GetAttribute("aria-required").Should().Be("true");
         }
 
         /// <summary>
-        /// Required and aria-required CheckBox attributes should be dynamic.
+        /// Required CheckBox attribute should be dynamic.
         /// </summary>
         [Test]
-        public void RequiredAndAriaRequiredCheckBoxAttributes_Should_BeDynamic()
+        public void RequiredCheckBoxAttributes_Should_BeDynamic()
         {
             var comp = Context.RenderComponent<MudCheckBox<bool>>();
 
             var input = () => comp.Find("input");
             input().HasAttribute("required").Should().BeFalse();
-            input().GetAttribute("aria-required").Should().Be("false");
 
             comp.SetParametersAndRender(parameters => parameters
                 .Add(p => p.Required, true));
 
             input().HasAttribute("required").Should().BeTrue();
-            input().GetAttribute("aria-required").Should().Be("true");
         }
 
         [Test]
