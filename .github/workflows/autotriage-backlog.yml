@@ -19,6 +19,7 @@ concurrency:
 
 jobs:
   triage:
+    if: ${{ github.repository_owner == 'MudBlazor' }}
     runs-on: ubuntu-latest
     steps:
       - name: Generate app token
@@ -52,7 +53,7 @@ jobs:
 
       - name: Upload artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: triage-artifacts-${{ github.run_number }}
           path: |
