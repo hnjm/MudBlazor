@@ -2,10 +2,10 @@
 // MudBlazor licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Diagnostics.CodeAnalysis;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
 using MudBlazor.Services;
+using MudBlazor.State;
 using MudBlazor.Utilities;
 using MudBlazor.Utilities.Exceptions;
 
@@ -30,10 +30,20 @@ namespace MudBlazor
         private MudInput<string> _elementReference = null!;
         private HashSet<T?> _selectedValues = new HashSet<T?>();
         protected internal List<MudSelectItem<T>> _items = new();
-        private string _elementId = Identifier.Create("select");
+        private readonly string _elementId = Identifier.Create("select");
         private string _searchText = string.Empty;
         private string? _lastSelectedId = string.Empty;
         private DateTime _lastSearchTime = DateTime.MinValue;
+
+        public MudSelect()
+        {
+            Adornment = Adornment.End;
+            IconSize = Size.Medium;
+            using var registerScope = CreateRegisterScope();
+            registerScope.RegisterParameter<bool>(nameof(MultiSelection))
+                .WithParameter(() => MultiSelection)
+                .WithChangeHandler(() => UpdateTextPropertyAsync(false));
+        }
 
         protected string OuterClassname =>
             new CssBuilder("mud-select")
@@ -159,7 +169,7 @@ namespace MudBlazor
             var mudSelectItems = items as MudSelectItem<T>[] ?? items.ToArray();
 
             var matchingItems = mudSelectItems
-                .Where(x => !x.Disabled && Converter.Set(x.Value)?.StartsWith(_searchText, StringComparison.InvariantCultureIgnoreCase) == true)
+                .Where(x => !x.Disabled && ConvertSet(x.Value)?.StartsWith(_searchText, StringComparison.InvariantCultureIgnoreCase) == true)
                 .ToList();
 
             if (matchingItems.Count == 0)
@@ -213,15 +223,24 @@ namespace MudBlazor
         }
 
         /// <summary>
-        /// The behavior of the dropdown popover menu
+        /// Displays the dropdown popover in a fixed position, even while scrolling.
         /// </summary>
         /// <remarks>
-        /// Defaults to <see cref="DropdownSettings.Fixed" /> false
-        /// Defaults to <see cref="DropdownSettings.OverflowBehavior" /> <see cref="OverflowBehavior.FlipOnOpen" />
+        /// Defaults to <c>false</c>.
         /// </remarks>
         [Category(CategoryTypes.Popover.Behavior)]
         [Parameter]
-        public DropdownSettings DropdownSettings { get; set; } = new DropdownSettings();
+        public bool PopoverFixed { get; set; }
+
+        /// <summary>
+        /// The behavior applied when there is not enough space for the dropdown popover to be visible.
+        /// </summary>
+        /// <remarks>
+        /// Defaults to <see cref="MudGlobal.PopoverDefaults.OverflowBehavior" />.
+        /// </remarks>
+        [Category(CategoryTypes.Popover.Behavior)]
+        [Parameter]
+        public OverflowBehavior OverflowBehavior { get; set; } = MudGlobal.PopoverDefaults.OverflowBehavior;
 
         /// <summary>
         /// Determines the width of this Popover dropdown in relation to the parent container.
@@ -432,13 +451,13 @@ namespace MudBlazor
                     //Warning. Here the Converter was not set yet
                     if (MultiSelectionTextFunc != null)
                     {
-                        SetCustomizedTextAsync(string.Join(Delimiter, _selectedValues.Select(Converter.Set)),
-                            selectedConvertedValues: _selectedValues.Select(Converter.Set).ToList(),
+                        SetCustomizedTextAsync(string.Join(Delimiter, _selectedValues.Select(ConvertSet)),
+                            selectedConvertedValues: _selectedValues.Select(ConvertSet).ToList(),
                             multiSelectionTextFunc: MultiSelectionTextFunc).CatchAndLog();
                     }
                     else
                     {
-                        SetTextAsync(string.Join(Delimiter, _selectedValues.Select(Converter.Set)), updateValue: false).CatchAndLog();
+                        SetTextAsync(string.Join(Delimiter, _selectedValues.Select(ConvertSet)), updateValue: false).CatchAndLog();
                     }
                 }
 
@@ -467,34 +486,12 @@ namespace MudBlazor
             }
         }
 
-        private Func<T?, string?>? _toStringFunc = x => x?.ToString();
-
         /// <summary>
         /// The function for the <c>Text</c> in drop-down items.
         /// </summary>
         [Parameter]
         [Category(CategoryTypes.FormComponent.ListBehavior)]
-        public Func<T?, string?>? ToStringFunc
-        {
-            get => _toStringFunc;
-            set
-            {
-                if (_toStringFunc == value)
-                    return;
-                _toStringFunc = value;
-                Converter = new Converter<T>
-                {
-                    SetFunc = _toStringFunc ?? (x => x?.ToString()),
-                    //GetFunc = LookupValue,
-                };
-            }
-        }
-
-        public MudSelect()
-        {
-            Adornment = Adornment.End;
-            IconSize = Size.Medium;
-        }
+        public Func<T?, string?>? ToStringFunc { get; set; }
 
         protected override void OnAfterRender(bool firstRender)
         {
@@ -578,20 +575,18 @@ namespace MudBlazor
             if (MultiSelectionTextFunc != null)
             {
                 return MultiSelection
-                    ? SetCustomizedTextAsync(string.Join(Delimiter, SelectedValues!.Select(Converter.Set)),
-                        selectedConvertedValues: SelectedValues!.Select(Converter.Set).ToList(),
+                    ? SetCustomizedTextAsync(string.Join(Delimiter, SelectedValues!.Select(ConvertSet)),
+                        selectedConvertedValues: SelectedValues!.Select(ConvertSet).ToList(),
                         multiSelectionTextFunc: MultiSelectionTextFunc)
                     : base.UpdateTextPropertyAsync(updateValue);
             }
 
             return MultiSelection
-                ? SetTextAsync(string.Join(Delimiter, SelectedValues!.Select(Converter.Set)))
+                ? SetTextAsync(string.Join(Delimiter, SelectedValues!.Select(ConvertSet)))
                 : base.UpdateTextPropertyAsync(updateValue);
         }
 
         internal event Action<ICollection<T?>>? SelectionChangedFromOutside;
-
-        private bool _multiSelection;
 
         /// <summary>
         /// Allows multiple values to be selected via checkboxes.
@@ -599,20 +594,9 @@ namespace MudBlazor
         /// <remarks>
         /// Defaults to <c>false</c>.  When <c>false</c>, only one value can be selected at a time.
         /// </remarks>
-        [Parameter]
+        [Parameter, ParameterState(ParameterUsage = ParameterUsageOptions.None)]
         [Category(CategoryTypes.FormComponent.ListBehavior)]
-        public bool MultiSelection
-        {
-            get => _multiSelection;
-            set
-            {
-                if (_multiSelection != value)
-                {
-                    _multiSelection = value;
-                    UpdateTextPropertyAsync(false).CatchAndLog();
-                }
-            }
-        }
+        public bool MultiSelection { get; set; }
 
         /// <summary>
         /// The list of choices the user can select.
@@ -771,13 +755,13 @@ namespace MudBlazor
 
                 if (MultiSelectionTextFunc != null)
                 {
-                    await SetCustomizedTextAsync(string.Join(Delimiter, SelectedValues!.Select(Converter.Set)),
-                        selectedConvertedValues: SelectedValues!.Select(Converter.Set).ToList(),
+                    await SetCustomizedTextAsync(string.Join(Delimiter, SelectedValues!.Select(ConvertSet!)),
+                        selectedConvertedValues: SelectedValues!.Select(ConvertSet!).ToList(),
                         multiSelectionTextFunc: MultiSelectionTextFunc);
                 }
                 else
                 {
-                    await SetTextAsync(string.Join(Delimiter, SelectedValues!.Select(Converter.Set)), updateValue: false);
+                    await SetTextAsync(string.Join(Delimiter, SelectedValues!.Select(ConvertSet!)), updateValue: false);
                 }
 
                 UpdateSelectAllChecked();
@@ -980,6 +964,13 @@ namespace MudBlazor
             }
 
             await base.OnAfterRenderAsync(firstRender);
+        }
+
+        protected override string? ConvertSet(T? input)
+        {
+            return ToStringFunc is not null
+                ? ToStringFunc(input)
+                : base.ConvertSet(input);
         }
 
         /// <summary>
@@ -1247,16 +1238,6 @@ namespace MudBlazor
             FieldChanged(_selectedValues);
         }
 
-        /// <summary>
-        /// Clears all selections.
-        /// </summary>
-        /// <remarks>
-        /// To reset validation errors (e.g. required), use <see cref="ResetValueAsync"/>
-        /// </remarks>
-        [ExcludeFromCodeCoverage]
-        [Obsolete("Use ClearAsync instead")]
-        public Task Clear() => ClearAsync();
-
         private async Task SelectAllClickAsync()
         {
             // Manage the fake tri-state of a checkbox
@@ -1281,13 +1262,13 @@ namespace MudBlazor
             _selectedValues = new HashSet<T?>(selectedValues, _comparer);
             if (MultiSelectionTextFunc != null)
             {
-                await SetCustomizedTextAsync(string.Join(Delimiter, SelectedValues!.Select(Converter.Set)),
-                    selectedConvertedValues: SelectedValues!.Select(Converter.Set).ToList(),
+                await SetCustomizedTextAsync(string.Join(Delimiter, SelectedValues!.Select(ConvertSet)),
+                    selectedConvertedValues: SelectedValues!.Select(ConvertSet).ToList(),
                     multiSelectionTextFunc: MultiSelectionTextFunc);
             }
             else
             {
-                await SetTextAsync(string.Join(Delimiter, SelectedValues!.Select(Converter.Set)), updateValue: false);
+                await SetTextAsync(string.Join(Delimiter, SelectedValues!.Select(ConvertSet)), updateValue: false);
             }
             UpdateSelectAllChecked();
             _selectedValues = selectedValues; // need to force selected values because Blazor overwrites it under certain circumstances due to changes of Text or Value
@@ -1311,7 +1292,7 @@ namespace MudBlazor
 
             if (!FitContent) return;
 
-            var stringValue = ToStringFunc?.Invoke(item.Value) ?? Converter.Set(item.Value);
+            var stringValue = ToStringFunc?.Invoke(item.Value) ?? ConvertSet(item.Value);
 
             if (_longestItem is null || stringValue?.Length > _longestItemLength)
             {

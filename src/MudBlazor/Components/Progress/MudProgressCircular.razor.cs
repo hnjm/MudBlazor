@@ -74,14 +74,11 @@ namespace MudBlazor
         /// </summary>
         /// <remarks>
         /// Defaults to <c>false</c>.
-        /// Override with <see cref="MudGlobal.Rounded"/>.
         /// When <c>true</c>, the CSS <c>stroke-linecap</c> is set to <c>round</c>.
         /// </remarks>
         [Parameter]
         [Category(CategoryTypes.ProgressLinear.Appearance)]
-#pragma warning disable CS0618 // Type or member is obsolete
-        public bool Rounded { get; set; } = MudGlobal.Rounded == true;
-#pragma warning restore CS0618 // Type or member is obsolete
+        public bool Rounded { get; set; }
 
         /// <summary>
         /// The lowest possible value.
@@ -109,7 +106,7 @@ namespace MudBlazor
         /// <remarks>
         /// Defaults to <c>0</c>.  Only applies when <see cref="Indeterminate"/> is <c>False</c>.  Should be between <see cref="Min"/> and <see cref="Max"/>.
         /// </remarks>
-        [Parameter]
+        [Parameter, ParameterState]
         [Category(CategoryTypes.ProgressCircular.Behavior)]
         public double Value { get; set; }
 

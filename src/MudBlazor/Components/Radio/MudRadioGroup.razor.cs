@@ -4,6 +4,7 @@
 
 using Microsoft.AspNetCore.Components;
 using MudBlazor.Utilities;
+using MudBlazor.Utilities.Converter;
 using MudBlazor.Utilities.Exceptions;
 
 namespace MudBlazor
@@ -19,7 +20,10 @@ namespace MudBlazor
         private MudRadio<T>? _selectedRadio;
         private HashSet<MudRadio<T>> _radios = new();
 
-        public MudRadioGroup() : base(new Converter<T, T>()) { }
+        public MudRadioGroup()
+        {
+            Converter = new EmptyConverter<T?>();
+        }
 
         protected string Classname =>
             new CssBuilder("mud-input-control-boolean-input")
@@ -50,6 +54,7 @@ namespace MudBlazor
         /// <summary>
         /// The CSS styles for this button group.
         /// </summary>
+        [Obsolete("Prefer the InputClass property with CSS https://github.com/MudBlazor/MudBlazor/issues/12047")]
         [Parameter]
         [Category(CategoryTypes.Radio.Appearance)]
         public string? InputStyle { get; set; }

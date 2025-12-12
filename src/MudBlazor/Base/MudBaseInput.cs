@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.JSInterop;
 using MudBlazor.State;
 using MudBlazor.Utilities;
+using MudBlazor.Utilities.Converter;
 
 namespace MudBlazor
 {
@@ -31,12 +32,21 @@ namespace MudBlazor
         protected string? InputElementId => _inputIdState.Value;
         private string? _userAttributesId = Identifier.Create("mudinput");
         private readonly string _componentId = Identifier.Create("mudinput");
+        private readonly ParameterState<string?> _formatState;
         private readonly ParameterState<string?> _inputIdState;
 
         protected MudBaseInput()
-            : base(new DefaultConverter<T>())
         {
+            Converter = new DefaultConverter<T>
+            {
+                Culture = GetCulture,
+                Format = GetFormat
+            };
+
             using var registerScope = CreateRegisterScope();
+            _formatState = registerScope.RegisterParameter<string?>(nameof(Format))
+                .WithParameter(() => Format)
+                .WithChangeHandler(OnCultureAndFormatChangedAsync);
             _inputIdState = registerScope.RegisterParameter<string?>(nameof(InputId))
                 .WithParameter(() => InputId)
                 .WithChangeHandler(UpdateInputIdStateAsync);
@@ -211,25 +221,21 @@ namespace MudBlazor
         /// The appearance variation to use.
         /// </summary>
         /// <remarks>
-        /// Defaults to <see cref="Variant.Text"/> in <see cref="MudGlobal.InputDefaults.Variant"/>.
+        /// Defaults to <see cref="Variant.Text"/>.
         /// </remarks>
         [Parameter]
         [Category(CategoryTypes.FormComponent.Appearance)]
-#pragma warning disable CS0618 // Type or member is obsolete
-        public Variant Variant { get; set; } = MudGlobal.InputDefaults.Variant;
-#pragma warning restore CS0618 // Type or member is obsolete
+        public Variant Variant { get; set; } = Variant.Text;
 
         /// <summary>
         /// The amount of vertical spacing for this input.
         /// </summary>
         /// <remarks>
-        /// Defaults to <see cref="Margin.None"/> in <see cref="MudGlobal.InputDefaults.Margin"/>.
+        /// Defaults to <see cref="Margin.None"/>.
         /// </remarks>
         [Parameter]
         [Category(CategoryTypes.FormComponent.Appearance)]
-#pragma warning disable CS0618 // Type or member is obsolete
-        public Margin Margin { get; set; } = MudGlobal.InputDefaults.Margin;
-#pragma warning restore CS0618 // Type or member is obsolete
+        public Margin Margin { get; set; } = Margin.None;
 
         /// <summary>
         /// Typography for the input text.
@@ -336,14 +342,12 @@ namespace MudBlazor
         /// Shows the label inside the input if no <see cref="Value"/> is specified.
         /// </summary>
         /// <remarks>
-        /// Defaults to <c>false</c> in <see cref="MudGlobal.InputDefaults.ShrinkLabel"/>.
+        /// Defaults to <c>false</c>.
         /// When <c>true</c>, the label will not move into the input when the input is empty.
         /// </remarks>
         [Parameter]
         [Category(CategoryTypes.FormComponent.Appearance)]
-#pragma warning disable CS0618 // Type or member is obsolete
-        public bool ShrinkLabel { get; set; } = MudGlobal.InputDefaults.ShrinkLabel;
-#pragma warning restore CS0618 // Type or member is obsolete
+        public bool ShrinkLabel { get; set; }
 
         /// <summary>
         /// Occurs when the <see cref="Text"/> property has changed.
@@ -421,13 +425,9 @@ namespace MudBlazor
         /// <remarks>
         /// This property is passed into the <c>ToString()</c> method of the <see cref="Value"/> property, such as formatting <c>int</c>, <c>float</c>, <c>DateTime</c> and <c>TimeSpan</c> values.
         /// </remarks>
-        [Parameter]
+        [Parameter, ParameterState]
         [Category(CategoryTypes.FormComponent.Behavior)]
-        public string? Format
-        {
-            get => ((Converter<T>)Converter).Format;
-            set => SetFormat(value);
-        }
+        public string? Format { get; set; }
 
         /// <summary>
         /// The ID of the input element.
@@ -435,7 +435,7 @@ namespace MudBlazor
         /// <remarks>
         /// When set takes precedence over any internally generated IDs.
         /// </remarks>
-        [Parameter]
+        [Parameter, ParameterState]
         [Category(CategoryTypes.FormComponent.Behavior)]
         public string? InputId { get; set; }
 
@@ -472,7 +472,7 @@ namespace MudBlazor
         /// </remarks>
         protected virtual Task UpdateTextPropertyAsync(bool updateValue)
         {
-            return SetTextAsync(Converter.Set(Value), updateValue);
+            return SetTextAsync(ConvertSet(Value), updateValue);
         }
 
         /// <summary>
@@ -597,41 +597,21 @@ namespace MudBlazor
         /// </remarks>
         protected virtual Task UpdateValuePropertyAsync(bool updateText)
         {
-            return SetValueAsync(Converter.Get(Text), updateText);
+            return SetValueAsync(ConvertGet(Text), updateText);
         }
 
-        protected override bool SetConverter(Converter<T, string> value)
-        {
-            var changed = base.SetConverter(value);
-            if (changed)
-            {
-                UpdateTextPropertyAsync(false).CatchAndLog();      // refresh only Text property from current Value
-            }
+        protected override string? GetFormat() => _formatState.Value;
 
-            return changed;
+        protected override async Task OnCultureAndFormatChangedAsync()
+        {
+            await base.OnCultureAndFormatChangedAsync();
+            await UpdateTextPropertyAsync(false);
         }
 
-        protected override bool SetCulture(CultureInfo value)
+        protected override async Task OnConverterChangedAsync()
         {
-            var changed = base.SetCulture(value);
-            if (changed)
-            {
-                UpdateTextPropertyAsync(false).CatchAndLog();      // refresh only Text property from current Value
-            }
-
-            return changed;
-        }
-
-        protected virtual bool SetFormat(string? value)
-        {
-            var changed = Format != value;
-            if (changed)
-            {
-                ((Converter<T>)Converter).Format = value;
-                UpdateTextPropertyAsync(false).CatchAndLog();      // refresh only Text property from current Value
-            }
-
-            return changed;
+            await base.OnConverterChangedAsync();
+            await UpdateTextPropertyAsync(false);
         }
 
         protected override async Task ValidateValue()
@@ -661,7 +641,7 @@ namespace MudBlazor
 
             _userAttributesId = UserAttributes.FirstOrDefault(userAttribute => userAttribute.Key.Equals("id", StringComparison.InvariantCultureIgnoreCase)).Value?.ToString();
 
-            if (InputId is null)
+            if (_inputIdState.Value is null)
             {
                 await UpdateInputIdStateAsync();
             }
@@ -732,6 +712,17 @@ namespace MudBlazor
             {
                 base.OnParametersSet();
             }
+            else
+            {
+                // MudBlazor uses an unconventional SubscribeToParentForm mechanism whose behavior is not fully understandable.
+                // Because of this, we must manually call OnParametersSet on the ParameterContainer to ensure ParameterState fields update correctly.
+                //
+                // Without this manual call, scenarios involving inherited components can fall out of sync. For example:
+                // - Component1 inherits a base component that defines a state parameter.
+                // - Component2 also inherits that same base component, wraps Component1, and forwards its base parameters to Component1.
+                // In this case, ParameterState will not remain properly synchronized since base.OnParametersSet is called conditionally.
+                ParameterContainer.OnParametersSet();
+            }
         }
 
         /// <inheritdoc />
@@ -763,7 +754,7 @@ namespace MudBlazor
 
         protected string? GetAriaDescribedByString()
         {
-            var errorId = HasErrors ? ErrorId : null;
+            var errorId = HasErrors ? ErrorIdState.Value : null;
             var helperId = GetHelperId();
 
             return errorId is not null && helperId is not null
@@ -781,7 +772,7 @@ namespace MudBlazor
 
         private async Task UpdateInputIdStateAsync()
         {
-            if (InputId is not null)
+            if (_inputIdState.Value is not null)
             {
                 return;
             }

@@ -24,7 +24,6 @@ namespace MudBlazor
         private bool _isDisposed;
         private string? _prevIcon;
         private string? _nextIcon;
-        private bool _isRendered;
         private bool _isVerticalTabs;
         private bool _redraw;
         private bool _isSliderPositionDetermined;
@@ -99,14 +98,11 @@ namespace MudBlazor
         /// </summary>
         /// <remarks>
         /// Defaults to <c>false</c>.
-        /// Override with <see cref="MudGlobal.Rounded"/>.
         /// When <c>true</c>, the <c>border-radius</c> style is set to the theme's default value.
         /// </remarks>
         [Parameter]
         [Category(CategoryTypes.Tabs.Appearance)]
-#pragma warning disable CS0618 // Type or member is obsolete
-        public bool Rounded { get; set; } = MudGlobal.Rounded == true;
-#pragma warning restore CS0618 // Type or member is obsolete
+        public bool Rounded { get; set; }
 
         /// <summary>
         /// Shows a border between the tab content and tab header.
@@ -310,14 +306,14 @@ namespace MudBlazor
         public RenderFragment<MudTabPanel>? PrePanelContent { get; set; }
 
         /// <summary>
-        /// The CSS classes applied to tab panels.
+        /// The CSS classes applied to all tab buttons.
         /// </summary>
         /// <remarks>
         /// Defaults to <c>null</c>. Multiple classes must be separated by spaces.
         /// </remarks>
         [Parameter]
         [Category(CategoryTypes.Tabs.Appearance)]
-        public string? TabPanelClass { get; set; }
+        public string? TabButtonsClass { get; set; }
 
         /// <summary>
         /// The CSS classes applied to the tab header.
@@ -341,14 +337,14 @@ namespace MudBlazor
         public string? ActiveTabClass { get; set; }
 
         /// <summary>
-        /// The CSS classes applied to all tab panels.
+        /// The CSS classes applied to the element encasing the tab panels.
         /// </summary>
         /// <remarks>
         /// Defaults to <c>null</c>. Multiple classes must be separated by spaces.
         /// </remarks>
         [Parameter]
         [Category(CategoryTypes.Tabs.Appearance)]
-        public string? PanelClass { get; set; }
+        public string? TabPanelsClass { get; set; }
 
         /// <summary>
         /// The currently selected tab panel.
@@ -362,7 +358,7 @@ namespace MudBlazor
         /// <remarks>
         /// Defaults to <c>0</c> (the first tab). When this value changes, <see cref="ActivePanelIndexChanged"/> occurs.
         /// </remarks>
-        [Parameter]
+        [Parameter, ParameterState]
         [Category(CategoryTypes.Tabs.Behavior)]
         public int ActivePanelIndex { get; set; }
 
@@ -536,8 +532,6 @@ namespace MudBlazor
                     await _activePanelIndexState.SetValueAsync(index.Value);
                 }
 
-                _isRendered = true;
-
                 var options = new KeyInterceptorOptions(
                     "mud-tab",
                     [
@@ -610,7 +604,7 @@ namespace MudBlazor
 
         internal async Task SetPanelRefAsync(ElementReference reference)
         {
-            if (_isRendered && _resizeObserver!.IsElementObserved(reference) == false)
+            if (HasRendered && _resizeObserver!.IsElementObserved(reference) == false)
                 await _resizeObserver!.Observe(reference);
 
             _redraw = true;
@@ -695,46 +689,6 @@ namespace MudBlazor
         private Task HandleActivePanelIndexChanged(ParameterChangedEventArgs<int> args)
         {
             return ActivatePanelAsync(args.Value);
-        }
-
-        /// <summary>
-        /// Sets the active panel and <see cref="ActivePanelIndex"/> property to match the provided panel. 
-        /// A <c>null</c> panel deactivates all panels.
-        /// </summary>
-        /// <param name="panel">The panel to activate.</param>
-        /// <param name="ignoreDisabledState">When <c>true</c>, the panel will be activated even if it is disabled.</param>
-        [Obsolete("Use ActivatePanelAsync instead.")]
-        public void ActivatePanel(MudTabPanel? panel, bool ignoreDisabledState = false)
-        {
-            if (panel is not null && _panels.IndexOf(panel) > -1)
-                ActivatePanelAsync(panel, ignoreDisabledState).CatchAndLog();
-        }
-
-        /// <summary>
-        /// Sets the active panel and <see cref="ActivePanelIndex"/> property to match the provided index. 
-        /// An invalid index is discarded and no changes are made.
-        /// </summary>
-        /// <param name="index">The index of the panel to activate.</param>
-        /// <param name="ignoreDisabledState">When <c>true</c>, the panel will be activated even if it is disabled.</param>
-        [Obsolete("Use ActivatePanelAsync instead.")]
-        public void ActivatePanel(int index, bool ignoreDisabledState = false)
-        {
-            if (index > -1 && index <= _panels.Count - 1)
-                ActivatePanelAsync(_panels[index], ignoreDisabledState).CatchAndLog();
-        }
-
-        /// <summary>
-        /// Sets the active panel and <see cref="ActivePanelIndex"/> property to match the provided unique id. 
-        /// An invalid id is discarded and no changes are made.
-        /// </summary>
-        /// <param name="id">The unique ID of the panel to activate.</param>
-        /// <param name="ignoreDisabledState">When <c>true</c>, the panel will be activated even if it is disabled.</param>
-        [Obsolete("Use ActivatePanelAsync instead.")]
-        public void ActivatePanel(object id, bool ignoreDisabledState = false)
-        {
-            var panel = _panels.FirstOrDefault(p => Equals(p.ID, id));
-            if (panel != null)
-                ActivatePanelAsync(panel, ignoreDisabledState).CatchAndLog();
         }
 
         /// <summary>
@@ -869,7 +823,7 @@ namespace MudBlazor
         protected string PanelsClassnames =>
             new CssBuilder("mud-tabs-panels")
                 .AddClass($"mud-tabs-vertical", _isVerticalTabs)
-                .AddClass(PanelClass)
+                .AddClass(TabPanelsClass)
                 .Build();
 
         protected string SliderClass =>
@@ -928,7 +882,7 @@ namespace MudBlazor
               .AddClass($"mud-disabled", panel.Disabled)
               .AddClass($"mud-ripple", Ripple)
               .AddClass(ActiveTabClass, when: () => panel == ActivePanel)
-              .AddClass(TabPanelClass)
+              .AddClass(TabButtonsClass)
               .AddClass(panel.Classname)
               .Build();
 
