@@ -4,12 +4,10 @@
 
 using Microsoft.AspNetCore.Components;
 using MudBlazor.Utilities;
-using MudBlazor.Utilities.Converter;
 using MudBlazor.Utilities.Exceptions;
 
 namespace MudBlazor
 {
-#nullable enable
 
     /// <summary>
     /// A group of <see cref="MudRadio{T}"/> components.
@@ -18,12 +16,7 @@ namespace MudBlazor
     public partial class MudRadioGroup<T> : MudFormComponent<T, T>, IMudRadioGroup
     {
         private MudRadio<T>? _selectedRadio;
-        private HashSet<MudRadio<T>> _radios = new();
-
-        public MudRadioGroup()
-        {
-            Converter = new EmptyConverter<T?>();
-        }
+        private readonly HashSet<MudRadio<T>> _radios = new();
 
         protected string Classname =>
             new CssBuilder("mud-input-control-boolean-input")
@@ -128,7 +121,7 @@ namespace MudBlazor
 
                 if (updateRadio)
                 {
-                    var radio = _radios.FirstOrDefault(r => OptionEquals(r.Value, _value));
+                    var radio = _radios.FirstOrDefault(r => OptionEquals(r.ReadValue, _value));
                     await SetSelectedRadioAsync(radio, false);
                 }
 
@@ -184,7 +177,7 @@ namespace MudBlazor
 
             if (_selectedRadio is null)
             {
-                if (OptionEquals(radio.Value, _value))
+                if (OptionEquals(radio.ReadValue, _value))
                 {
                     return SetSelectedRadioAsync(radio, false);
                 }
@@ -213,9 +206,12 @@ namespace MudBlazor
             return base.ResetValueAsync();
         }
 
+        /// <inheritdoc />
+        protected override IConverter<T?, T?> GetDefaultConverter() => EmptyConverter<T?>.Instance;
+
         private static T? GetValueOrDefault(MudRadio<T>? radio)
         {
-            return radio is not null ? radio.Value : default;
+            return radio is not null ? radio.ReadValue : default;
         }
 
         private static bool OptionEquals(T? option1, T? option2)

@@ -3,13 +3,13 @@ using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.Logging;
 using MudBlazor.Utilities;
 
-#nullable enable
 namespace MudBlazor
 {
     /// <summary>
-    /// Represents a component with simple and flexible type-ahead functionality.
+    /// A text input for searching and selecting from a list of options. Unlike <see cref="MudSelect{T}"/>, it doesn't require the complete item list upfront and supports asynchronous search for database queries.
     /// </summary>
     /// <typeparam name="T">The type of item to search.</typeparam>
+    /// <seealso cref="MudSelect{T}"/>
     public partial class MudAutocomplete<T> : MudBaseInput<T>
     {
         /// <summary>
@@ -21,7 +21,7 @@ namespace MudBlazor
         private bool _isClearing;
         private bool _isProcessingValue;
         private int _selectedListItemIndex;
-        private int _elementKey = 0;
+        private readonly int _elementKey = 0;
         private int _returnedItemsCount;
         private bool _open;
         private bool _opening;
@@ -29,13 +29,19 @@ namespace MudBlazor
         private MudInput<string> _elementReference = null!;
         private CancellationTokenSource? _cancellationTokenSrc;
         private Task? _currentSearchTask;
-        private Timer? _debounceTimer;
+        private ITimer? _debounceTimer;
         private T[]? _items;
         private List<int> _enabledItemIndices = [];
         private bool _handleNextFocus;
 
         [Inject]
         private IScrollManager ScrollManager { get; set; } = null!;
+
+        [Inject]
+        private IPopoverService PopoverService { get; set; } = null!;
+
+        [Inject]
+        private TimeProvider TimeProvider { get; set; } = null!;
 
         protected string Classname =>
             new CssBuilder("mud-select")
@@ -44,6 +50,7 @@ namespace MudBlazor
 
         protected string InputClassname =>
             new CssBuilder("mud-select-input")
+                .AddClass("mud-readonly", GetReadOnlyState())
                 .AddClass(InputClass)
                 .Build();
 
@@ -264,6 +271,15 @@ namespace MudBlazor
         public int DebounceInterval { get; set; } = 100;
 
         /// <summary>
+        /// Occurs when the <see cref="DebounceInterval"/> has elapsed.
+        /// </summary>
+        /// <remarks>
+        /// The current value of <see cref="MudBaseInput{T}.Text"/> is included in this event.
+        /// </remarks>
+        [Parameter]
+        public EventCallback<string> OnDebounceIntervalElapsed { get; set; }
+
+        /// <summary>
         /// The custom template used to display unselected items.
         /// </summary>
         /// <remarks>
@@ -357,11 +373,16 @@ namespace MudBlazor
         /// Prevents interaction with background elements while this list is open.
         /// </summary>
         /// <remarks>
-        /// Defaults to <c>true</c>.
+        /// Defaults to <see cref="PopoverOptions.ModalOverlay" />.
         /// </remarks>
         [Parameter]
         [Category(CategoryTypes.FormComponent.ListBehavior)]
-        public bool Modal { get; set; } = MudGlobal.PopoverDefaults.ModalOverlay;
+        public bool? Modal { get; set; }
+
+        /// <summary>
+        /// Gets the resolved modal overlay value, using the global default from <see cref="PopoverOptions"/> if not explicitly set.
+        /// </summary>
+        protected bool GetModal() => Modal ?? PopoverService.PopoverOptions.ModalOverlay;
 
         /// <summary>
         /// Determines the width of this Popover dropdown in relation to the parent container.
@@ -404,16 +425,6 @@ namespace MudBlazor
         [Category(CategoryTypes.Popover.Behavior)]
         [Parameter]
         public bool PopoverFixed { get; set; }
-
-        /// <summary>
-        /// The behavior applied when there is not enough space for the dropdown popover to be visible.
-        /// </summary>
-        /// <remarks>
-        /// Defaults to <see cref="MudGlobal.PopoverDefaults.OverflowBehavior" />.
-        /// </remarks>
-        [Category(CategoryTypes.Popover.Behavior)]
-        [Parameter]
-        public OverflowBehavior OverflowBehavior { get; set; } = MudGlobal.PopoverDefaults.OverflowBehavior;
 
         /// <summary>
         /// The function used to determine if an item should be disabled.
@@ -506,7 +517,7 @@ namespace MudBlazor
         {
             get => _open;
             // Note: the setter is protected because it was needed by a user who derived his own autocomplete from this class.
-            // Note: setting Open will not open or close it. Use ToggleMenuAsync() for that.
+            // Note: setting Open will not open or close it. Use ToggleAsync() for that.
             protected set
             {
                 if (_open == value)
@@ -519,7 +530,18 @@ namespace MudBlazor
 
         private bool IsLoading => _currentSearchTask is { IsCompleted: false };
 
-        private string CurrentIcon => !string.IsNullOrWhiteSpace(AdornmentIcon) ? AdornmentIcon : _open ? CloseIcon : OpenIcon;
+        private string CurrentIcon
+        {
+            get
+            {
+                if (!string.IsNullOrWhiteSpace(AdornmentIcon))
+                {
+                    return AdornmentIcon;
+                }
+
+                return _open ? CloseIcon : OpenIcon;
+            }
+        }
 
         /// <summary>
         /// Returns a value for the <c>autocomplete</c> attribute, either supplied by default or the one specified in the attribute overrides.
@@ -542,11 +564,11 @@ namespace MudBlazor
             _isProcessingValue = true;
             try
             {
-                // #1 needs to close before SetValueAsync so that whatever the user puts in ValueChanged can run without the popover being in front of it
+                // #1 needs to close before SetValueAndUpdateTextAsync so that whatever the user puts in ValueChanged can run without the popover being in front of it
                 // #2 Use "Open" field instead of property to prevent raising multiple OpenChanged events while selecting item.
                 _open = false;
 
-                await SetValueAsync(value);
+                await SetValueAndUpdateTextAsync(value);
 
                 // needs to be open to run the rest of the code
                 _open = true;
@@ -557,7 +579,7 @@ namespace MudBlazor
                 var optionText = GetItemString(value);
 
                 if (!_isCleared)
-                    await SetTextAsync(optionText, false);
+                    await SetTextAndUpdateValueAsync(optionText, false);
 
                 _debounceTimer?.Dispose();
 
@@ -577,12 +599,14 @@ namespace MudBlazor
             }
         }
 
-        protected override void OnInitialized()
+        protected override async Task OnInitializedAsync()
         {
-            base.OnInitialized();
-            var text = GetItemString(Value);
+            await base.OnInitializedAsync();
+            var text = GetItemString(ReadValue);
             if (!string.IsNullOrWhiteSpace(text))
-                Text = text;
+            {
+                await SetTextCoreAsync(text);
+            }
         }
 
         protected override void OnAfterRender(bool firstRender)
@@ -617,18 +641,23 @@ namespace MudBlazor
         {
             _debounceTimer?.Dispose();
 
-            if (ResetValueOnEmptyText && string.IsNullOrWhiteSpace(Text))
-                await SetValueAsync(default(T), updateText);
+            if (ResetValueOnEmptyText && string.IsNullOrWhiteSpace(ReadText))
+                await SetValueAndUpdateTextAsync(default(T), updateText);
             else if (Immediate)
                 await CoerceValueToTextAsync();
 
             if (DebounceInterval <= 0)
                 await OpenMenuAsync();
             else
-                _debounceTimer = new Timer(OnDebounceComplete, null, DebounceInterval, Timeout.Infinite);
+                _debounceTimer = TimeProvider.CreateTimer(OnDebounceComplete, null, TimeSpan.FromMilliseconds(DebounceInterval), Timeout.InfiniteTimeSpan);
         }
 
-        private void OnDebounceComplete(object? stateInfo) => InvokeAsync(OpenMenuAsync);
+        private void OnDebounceComplete(object? stateInfo)
+            => InvokeAsync(async () =>
+            {
+                await OnDebounceIntervalElapsed.InvokeAsync(ReadText);
+                await OpenMenuAsync();
+            });
 
         private void CancelToken()
         {
@@ -683,7 +712,7 @@ namespace MudBlazor
         /// </summary>
         public async Task OpenMenuAsync()
         {
-            if (MinCharacters > 0 && (string.IsNullOrWhiteSpace(Text) || Text.Length < MinCharacters))
+            if (MinCharacters > 0 && (string.IsNullOrWhiteSpace(ReadText) || ReadText.Length < MinCharacters))
             {
                 Open = false;
                 StateHasChanged();
@@ -706,9 +735,9 @@ namespace MudBlazor
                 }
 
                 // Search while selected if enabled and the Text is equivalent to the Value.
-                searchingWhileSelected = !_isValueCoerced && !Strict && Value != null && (Value.ToString() == Text || (ToStringFunc != null && ToStringFunc(Value) == Text));
+                searchingWhileSelected = !_isValueCoerced && !Strict && ReadValue != null && (ReadValue!.ToString() == ReadText || (ToStringFunc != null && ToStringFunc(ReadValue!) == ReadText));
                 _cancellationTokenSrc ??= new CancellationTokenSource();
-                var searchText = searchingWhileSelected ? string.Empty : Text;
+                var searchText = searchingWhileSelected ? string.Empty : ReadText;
                 var searchTask = SearchFunc?.Invoke(searchText, _cancellationTokenSrc.Token);
 
                 _currentSearchTask = searchTask;
@@ -735,15 +764,18 @@ namespace MudBlazor
 
             if (MaxItems.HasValue)
             {
+                int startIndex = 0;
+                int length = Math.Min(MaxItems.Value, searchedItems.Length);
+
                 // Get range of items based off selected item so the selected item can be scrolled to when strict is set to false
-                if (!Strict && searchedItems.Length != 0 && !EqualityComparer<T>.Default.Equals(Value, default(T)))
+                if (!Strict && searchedItems.Length != 0 && !EqualityComparer<T>.Default.Equals(ReadValue, default(T)))
                 {
                     int maxItems = MaxItems.Value;
-                    int valueIndex = Array.IndexOf(searchedItems, Value);
+                    int valueIndex = Array.IndexOf(searchedItems, ReadValue);
 
                     // Center the selected item in the list if possible
                     int half = maxItems / 2;
-                    int startIndex = valueIndex - half;
+                    startIndex = valueIndex - half;
                     int endIndex = startIndex + maxItems;
 
                     // Adjust if out of bounds
@@ -758,21 +790,32 @@ namespace MudBlazor
                         startIndex = Math.Max(0, endIndex - maxItems);
                     }
 
-                    searchedItems = searchedItems.Take(new Range(startIndex, endIndex)).ToArray();
+                    length = endIndex - startIndex;
                 }
-                else
+
+                if (length < searchedItems.Length)
                 {
-                    searchedItems = searchedItems.Take(MaxItems.Value).ToArray();
+                    var slicedItems = new T[length];
+                    Array.Copy(searchedItems, startIndex, slicedItems, 0, length);
+                    searchedItems = slicedItems;
                 }
             }
 
             _items = searchedItems;
 
-            var enabledItems = _items.Select((item, idx) => (item, idx)).Where(tuple => ItemDisabledFunc?.Invoke(tuple.item) != true).ToList();
-            _enabledItemIndices = enabledItems.Select(tuple => tuple.idx).ToList();
+            var enabledItemIndices = new List<int>(_items.Length);
+            for (int i = 0; i < _items.Length; i++)
+            {
+                if (ItemDisabledFunc?.Invoke(_items[i]) != true)
+                {
+                    enabledItemIndices.Add(i);
+                }
+            }
+
+            _enabledItemIndices = enabledItemIndices;
             if (searchingWhileSelected) //compute the index of the currently select value, if it exists
             {
-                _selectedListItemIndex = Array.IndexOf(_items, Value);
+                _selectedListItemIndex = Array.IndexOf(_items, ReadValue);
             }
             else
             {
@@ -795,10 +838,10 @@ namespace MudBlazor
             }
         }
 
-        protected override Task SetValueAsync(T? value, bool updateText = true, bool force = false)
+        protected override Task SetValueAndUpdateTextAsync(T? value, bool updateText = true, bool force = false)
         {
             _isValueCoerced = false;
-            return base.SetValueAsync(value, updateText, force);
+            return base.SetValueAndUpdateTextAsync(value, updateText, force);
         }
 
         /// <summary>
@@ -812,8 +855,8 @@ namespace MudBlazor
                 _isCleared = true;
                 Open = false;
 
-                await SetTextAsync(string.Empty, updateValue: false);
-                await SetValueAsync(default, updateText: false);
+                await SetTextAndUpdateValueAsync(string.Empty, updateValue: false);
+                await SetValueAndUpdateTextAsync(default, updateText: false);
 
                 await _elementReference.ResetAsync();
 
@@ -1071,9 +1114,9 @@ namespace MudBlazor
             if (_items?.Length > 0)
                 _items = [];
             _open = true;
-            await SetValueAsync(default, false);
-            await SetTextAsync(default, false);
-            _selectedListItemIndex = default;
+            await SetValueAndUpdateTextAsync(default, false);
+            await SetTextAndUpdateValueAsync(null, false);
+            _selectedListItemIndex = 0;
             StateHasChanged();
             await OnClearButtonClick.InvokeAsync(e);
             await BeginValidateAsync();
@@ -1126,16 +1169,16 @@ namespace MudBlazor
             if (!CoerceText)
                 return Task.CompletedTask;
 
-            if (ResetValueOnEmptyText && string.IsNullOrEmpty(Text))
+            if (ResetValueOnEmptyText && string.IsNullOrEmpty(ReadText))
                 return Task.CompletedTask;
 
             _debounceTimer?.Dispose();
 
-            var text = Value == null ? null : GetItemString(Value);
+            var text = ReadValue == null ? null : GetItemString(ReadValue);
 
             // Don't update the value to prevent the popover from opening again after coercion
-            if (text != Text)
-                return SetTextAsync(text, updateValue: false);
+            if (text != ReadText)
+                return SetTextAndUpdateValueAsync(text, updateValue: false);
 
             return Task.CompletedTask;
         }
@@ -1147,14 +1190,18 @@ namespace MudBlazor
 
             _debounceTimer?.Dispose();
 
-            var value = ConvertGet(Text);
-            await SetValueAsync(value, updateText: false);
+            var value = ConvertGet(ReadText);
+            await SetValueAndUpdateTextAsync(value, updateText: false);
 
-            // We must set _isValueCoerced to true after calling SetValueAsync, as it sets it to false
+            // We must set _isValueCoerced to true after calling SetValueAndUpdateTextAsync, as it sets it to false
             // CoerceValue is always true at this point, so we can set the value to true rather than checking the property again
             _isValueCoerced = true;
         }
 
+        /// <remarks>
+        /// If <see cref="ToStringFunc"/> is set, it is used to convert the value to a string; otherwise, the base implementation is used.
+        /// </remarks>
+        /// <inheritdoc />
         protected override string? ConvertSet(T? input)
         {
             return ToStringFunc is not null
@@ -1224,12 +1271,10 @@ namespace MudBlazor
 
         private async Task OnTextChangedAsync(string? text)
         {
-            await base.TextChanged.InvokeAsync(text);
-
             if (text == null)
                 return;
 
-            await SetTextAsync(text, true);
+            await SetTextAndUpdateValueAsync(text, true);
         }
 
         private async Task ListItemOnClickAsync(T item)

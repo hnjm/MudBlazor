@@ -46,18 +46,13 @@ public static class IRenderedComponentExtensions
         where TComponent : IComponent
     {
         var builder = new ComponentParameterCollectionBuilder<TComponent>(parameterBuilder);
-#if NET10_0_OR_GREATER
         var parameters = ComponentParameterCollectionBuilderAccessors<TComponent>.Build(builder);
-#else
-        var parameters = TryGetParametersViaBuild(builder);
-#endif
 
         var parameterView = ToParameterView(parameters);
 
         return renderedComponent.SetParametersAndRenderAsync(parameterView);
     }
 
-#if NET10_0_OR_GREATER
     private static ParameterView ToParameterView(object parameters)
     {
         var parameterView = ParameterView.Empty;
@@ -71,14 +66,20 @@ public static class IRenderedComponentExtensions
             {
                 var param = enumerator.Current;
                 if (param is null)
+                {
                     continue;
+                }
 
                 if (ComponentParameterRefAccessors.GetIsCascadingValue(param))
+                {
                     throw new InvalidOperationException("Cannot provide cascading values here.");
+                }
 
                 var name = ComponentParameterRefAccessors.GetName(param);
                 if (name is null)
+                {
                     throw new InvalidOperationException("Parameter name is required.");
+                }
 
                 var value = ComponentParameterRefAccessors.GetValue(param);
                 paramDict.Add(name, value);
@@ -107,49 +108,14 @@ public static class IRenderedComponentExtensions
         [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "get_Count")]
         public static extern int GetCount([UnsafeAccessorType("Bunit.ComponentParameterCollection, bunit")] object collection);
     }
-#else
-    private static object TryGetParametersViaBuild<TComponent>(ComponentParameterCollectionBuilder<TComponent> builder)
-        where TComponent : IComponent
-    {
-        var type = typeof(ComponentParameterCollectionBuilder<TComponent>);
-        var build = type.GetMethod("Build", BindingFlags.Instance | BindingFlags.NonPublic);
-        return build?.Invoke(builder, null)!;
-    }
 
-    private static ParameterView ToParameterView(object parameters)
-    {
-        // Get Count
-        var countProp = parameters.GetType().GetProperty("Count", BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
-        var count = (int)(countProp?.GetValue(parameters) ?? 0);
-        if (count == 0) return ParameterView.Empty;
-
-        var dict = new Dictionary<string, object?>(StringComparer.Ordinal);
-
-        // Enumerate
-        var enumerable = (IEnumerable)parameters;
-        foreach (var param in enumerable)
-        {
-            var isCascading = ComponentParameterRefAccessors.GetIsCascadingValue(param);
-            if (isCascading)
-                throw new InvalidOperationException("You cannot provide a new cascading value through SetParametersAndRenderAsync.");
-
-            var name = ComponentParameterRefAccessors.GetName(param);
-            if (name is null)
-                throw new InvalidOperationException("A parameter name is required.");
-
-            var value = ComponentParameterRefAccessors.GetValue(param);
-            dict.Add(name, value);
-        }
-
-        return ParameterView.FromDictionary(dict);
-    }
-#endif
     private static class BunitRendererAccessors
     {
         [UnsafeAccessor(UnsafeAccessorKind.Method, Name = "SetDirectParametersAsync")]
         public static extern Task SetDirectParametersAsync<TComponent>(BunitRenderer renderer, IRenderedComponent<TComponent> renderedComponent, ParameterView parameters) where TComponent : IComponent;
     }
-    public static class ComponentParameterRefAccessors
+
+    private static class ComponentParameterRefAccessors
     {
         private static readonly Type _componentParameterType = Type.GetType("Bunit.ComponentParameter, bunit", throwOnError: true)!;
 

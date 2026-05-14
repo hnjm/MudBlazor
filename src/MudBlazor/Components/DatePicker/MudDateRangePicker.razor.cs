@@ -12,11 +12,9 @@ namespace MudBlazor
     public partial class MudDateRangePicker : MudBaseDatePicker
     {
         private readonly ParameterState<bool> _allowDisabledDatesInCountState;
-        private DateTime? _firstDate = null, _secondDate, _minValidDate, _maxValidDate;
-        private DateRange _dateRange;
-        private Range<string> _rangeText;
-
-        protected override bool IsRange => true;
+        private DateTime? _firstDate, _secondDate, _minValidDate, _maxValidDate;
+        private DateRange? _dateRange;
+        private Range<string>? _rangeText;
 
         /// <summary>
         /// Creates a new instance.
@@ -70,7 +68,7 @@ namespace MudBlazor
         /// </remarks>
         [Parameter]
         [Category(CategoryTypes.FormComponent.Behavior)]
-        public string PlaceholderStart { get; set; }
+        public string? PlaceholderStart { get; set; }
 
         /// <summary>
         /// The text displayed in the end input if no date is specified.
@@ -80,7 +78,7 @@ namespace MudBlazor
         /// </remarks>
         [Parameter]
         [Category(CategoryTypes.FormComponent.Behavior)]
-        public string PlaceholderEnd { get; set; }
+        public string? PlaceholderEnd { get; set; }
 
         /// <summary>
         /// The icon displayed between start and end dates.
@@ -96,14 +94,14 @@ namespace MudBlazor
         /// Occurs when <see cref="DateRange"/> has changed.
         /// </summary>
         [Parameter]
-        public EventCallback<DateRange> DateRangeChanged { get; set; }
+        public EventCallback<DateRange?> DateRangeChanged { get; set; }
 
         /// <summary>
         /// The currently selected date range.
         /// </summary>
         [Parameter]
         [Category(CategoryTypes.FormComponent.Data)]
-        public DateRange DateRange
+        public DateRange? DateRange
         {
             get => _dateRange;
             set => SetDateRangeAsync(value, true).CatchAndLog();
@@ -119,8 +117,11 @@ namespace MudBlazor
         [Category(CategoryTypes.FormComponent.Validation)]
         public bool AllowDisabledDatesInRange { get; set; } = false;
 
-        protected async Task SetDateRangeAsync(DateRange range, bool updateValue)
+        protected async Task SetDateRangeAsync(DateRange? range, bool updateValue)
         {
+            // Normalize the DateRange before exception is thrown
+            range = NormalizeDateRange(range);
+
             if (_dateRange != range)
             {
                 var doesRangeContainDisabledDates = !AllowDisabledDatesInRange && range is { Start: not null, End: not null } && Enumerable
@@ -168,21 +169,21 @@ namespace MudBlazor
             }
         }
 
-        private Range<string> RangeText
+        private Range<string>? RangeText
         {
             get => _rangeText;
             set
             {
-                if (_rangeText?.Equals(value) ?? value == null)
+                if (_rangeText?.Equals(value) ?? (value == null))
                     return;
 
                 Touched = true;
                 _rangeText = value;
-                SetDateRangeAsync(ParseDateRangeValue(value?.Start, value?.End), false).CatchAndLog();
+                SetDateRangeAsync(value is null ? null : ParseDateRangeValue(value.Start, value.End), false).CatchAndLog();
             }
         }
 
-        private MudRangeInput<string> _rangeInput;
+        private MudRangeInput<string> _rangeInput = null!;
 
         /// <summary>
         /// Focuses the start input.
@@ -220,7 +221,7 @@ namespace MudBlazor
         /// <param name="pos2">The index of the last character to select.</param>
         public ValueTask SelectRangeEndAsync(int pos1, int pos2) => _rangeInput.SelectRangeEndAsync(pos1, pos2);
 
-        protected override Task DateFormatChangedAsync(string newFormat)
+        protected override Task DateFormatChangedAsync(string? newFormat)
         {
             Touched = true;
             _rangeText = null;
@@ -234,7 +235,7 @@ namespace MudBlazor
             return SetTextAsync(_dateRange?.ToString(GetConverter()), false);
         }
 
-        protected override Task StringValueChangedAsync(string value)
+        protected override Task StringValueChangedAsync(string? value)
         {
             Touched = true;
             // Update the date range property (without updating back the Value property)
@@ -253,7 +254,7 @@ namespace MudBlazor
             var selectedDate = _firstDate.Value;
             var validDateRange = GetValidDateRange(selectedDate);
 
-            return base.IsDayDisabled(date) || MudDateRangePicker.IsDateOutOfRange(date, selectedDate, validDateRange);
+            return base.IsDayDisabled(date) || IsDateOutOfRange(date, selectedDate, validDateRange);
         }
 
         private DateRange GetValidDateRange(DateTime selectedDate)
@@ -328,12 +329,12 @@ namespace MudBlazor
             StateHasChanged();
         }
 
-        private DateRange ParseDateRangeValue(string value)
+        private DateRange? ParseDateRangeValue(string? value)
         {
             return DateRange.TryParse(value, GetConverter(), out var dateRange) ? dateRange : null;
         }
 
-        private DateRange ParseDateRangeValue(string start, string end)
+        private DateRange? ParseDateRangeValue(string? start, string? end)
         {
             return DateRange.TryParse(start, end, GetConverter(), out var dateRange) ? dateRange : null;
         }
@@ -355,6 +356,7 @@ namespace MudBlazor
 
         protected override string GetDayClasses(int month, DateTime day)
         {
+            var today = TimeProvider.GetLocalNow().Date;
             var b = new CssBuilder("mud-day");
             b.AddClass(AdditionalDateClassesFunc?.Invoke(day) ?? string.Empty);
             if (day < GetMonthStart(month) || day > GetMonthEnd(month))
@@ -367,20 +369,19 @@ namespace MudBlazor
             static bool isEqualTo(DateTime date1, DateTime date2) => date1 == date2;
             static bool isNotEqualTo(DateTime date1, DateTime date2) => date1 != date2;
 
-
             if ((_firstDate?.Date < day && _secondDate?.Date > day) || CheckDateRange(day, compareStart: isLessThan, compareEnd: isGreaterThan))
             {
                 return b
                     .AddClass("mud-range")
                     .AddClass("mud-range-between")
-                    .AddClass($"mud-current mud-{Color.ToDescriptionString()}-text mud-button-outlined mud-button-outlined-{Color.ToDescriptionString()}", day == DateTime.Today)
+                    .AddClass($"mud-current mud-{Color.ToStringFast(true)}-text mud-button-outlined mud-button-outlined-{Color.ToStringFast(true)}", day == today)
                     .Build();
             }
 
             if (_firstDate?.Date == day && _secondDate?.Date == day)
             {
                 return b.AddClass("mud-selected")
-                    .AddClass($"mud-theme-{Color.ToDescriptionString()}")
+                    .AddClass($"mud-theme-{Color.ToStringFast(true)}")
                     .Build();
             }
 
@@ -390,7 +391,7 @@ namespace MudBlazor
                     .AddClass("mud-range")
                     .AddClass("mud-range-start-selected")
                     .AddClass("mud-range-selection", _firstDate != null)
-                    .AddClass($"mud-theme-{Color.ToDescriptionString()}")
+                    .AddClass($"mud-theme-{Color.ToStringFast(true)}")
                     .Build();
             }
 
@@ -399,28 +400,29 @@ namespace MudBlazor
                 return b.AddClass("mud-selected")
                     .AddClass("mud-range")
                     .AddClass("mud-range-end-selected")
-                    .AddClass($"mud-theme-{Color.ToDescriptionString()}")
+                    .AddClass($"mud-theme-{Color.ToStringFast(true)}")
                     .Build();
             }
 
             if (CheckDateRange(day, compareStart: isEqualTo, compareEnd: isEqualTo))
             {
-                return b.AddClass("mud-selected").AddClass($"mud-theme-{Color.ToDescriptionString()}").Build();
+                return b.AddClass("mud-selected").AddClass($"mud-theme-{Color.ToStringFast(true)}").Build();
             }
-            else if (_firstDate?.Date < day)
+
+            if (_firstDate?.Date < day)
             {
-                return b.AddClass("mud-range", _secondDate is null && day != DateTime.Today)
+                return b.AddClass("mud-range", _secondDate is null && day != today)
                     .AddClass("mud-range-selection")
-                    .AddClass($"mud-range-selection-{Color.ToDescriptionString()}", _firstDate is not null)
-                    .AddClass($"mud-current mud-{Color.ToDescriptionString()}-text mud-button-outlined mud-button-outlined-{Color.ToDescriptionString()}", day == DateTime.Today)
+                    .AddClass($"mud-range-selection-{Color.ToStringFast(true)}", _firstDate is not null)
+                    .AddClass($"mud-current mud-{Color.ToStringFast(true)}-text mud-button-outlined mud-button-outlined-{Color.ToStringFast(true)}", day == today)
                     .Build();
             }
 
-            if (day == DateTime.Today)
+            if (day == today)
             {
                 return b.AddClass("mud-current")
-                    .AddClass($"mud-button-outlined mud-button-outlined-{Color.ToDescriptionString()}")
-                    .AddClass($"mud-{Color.ToDescriptionString()}-text")
+                    .AddClass($"mud-button-outlined mud-button-outlined-{Color.ToStringFast(true)}")
+                    .AddClass($"mud-{Color.ToStringFast(true)}-text")
                     .Build();
             }
 
@@ -429,6 +431,8 @@ namespace MudBlazor
 
         protected override async Task OnDayClickedAsync(DateTime dateTime)
         {
+            if (GetReadOnlyState())
+                return;
             if (_firstDate == null || _secondDate != null)
             {
                 _secondDate = null;
@@ -453,7 +457,7 @@ namespace MudBlazor
 
                 if (PickerVariant != PickerVariant.Static)
                 {
-                    await Task.Delay(ClosingDelay);
+                    await Task.Delay(TimeSpan.FromMilliseconds(ClosingDelay), TimeProvider);
                     await CloseAsync(false);
                 }
             }
@@ -478,11 +482,13 @@ namespace MudBlazor
             _secondDate = null;
         }
 
-        public override Task ClearAsync(bool close = true)
+        protected override Task ResetValueAsync() => ClearAsync();
+
+        public override async Task ClearAsync(bool close = true)
         {
-            DateRange = null;
+            await SetDateRangeAsync(null, true);
             _firstDate = _secondDate = null;
-            return base.ClearAsync(close);
+            await base.ClearAsync(close);
         }
 
         protected override string GetTitleDateString()
@@ -497,16 +503,63 @@ namespace MudBlazor
 
         protected override DateTime GetCalendarStartOfMonth()
         {
-            var date = StartMonth ?? DateRange?.Start ?? DateTime.Today;
+            var date = StartMonth ?? DateRange?.Start ?? TimeProvider.GetLocalNow().Date;
             return date.StartOfMonth(GetCulture());
+        }
+
+        protected override async Task OnYearClickedAsync(int year)
+        {
+            await base.OnYearClickedAsync(year);
+
+            if (DateRange?.Start is null && _firstDate is null)
+            {
+                HighlightedDate = PickerMonth;
+            }
         }
 
         protected override int GetCalendarYear(DateTime yearDate)
         {
-            var date = DateRange?.Start ?? DateTime.Today;
+            var date = DateRange?.Start ?? TimeProvider.GetLocalNow().Date;
             var diff = GetCulture().Calendar.GetYear(date) - GetCulture().Calendar.GetYear(yearDate);
             var calenderYear = GetCulture().Calendar.GetYear(date);
             return calenderYear - diff;
         }
+
+        /// <summary>
+        /// Normalize a date by treating DateTime.MinValue as null
+        /// This prevents an ArgumentOutOfRangeException from happening when performing date arithmetic
+        /// </summary>
+        /// <param name="date">The date to normalize</param>
+        /// <returns>Normalized date or null</returns>
+        private static DateTime? NormalizeDate(DateTime? date)
+        {
+            if (date is null)
+                return null;
+
+            // Treat DateTime.MinValue as null
+            if (date.Value == DateTime.MinValue)
+                return null;
+
+            return date;
+        }
+
+        /// <summary>
+        /// Normalize a date range by checking the start date and end date for DateTime.MinValue
+        /// This prevents an ArgumentOutOfRangeException from happening when performing date arithmetic
+        /// </summary>
+        /// <see cref="NormalizeDate"/>
+        /// <param name="range">The date range to normalize</param>
+        /// <returns>Normalized date range or null</returns>
+        private static DateRange? NormalizeDateRange(DateRange? range)
+        {
+            if (range is null)
+                return null;
+
+            var start = NormalizeDate(range.Start);
+            var end = NormalizeDate(range.End);
+
+            return new DateRange(start, end);
+        }
+
     }
 }

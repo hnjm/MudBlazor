@@ -1,9 +1,10 @@
 ﻿// Copyright (c) MudBlazor 2021
 // MudBlazor licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
+using System.Globalization;
 using AngleSharp.Dom;
+using AwesomeAssertions;
 using Bunit;
-using FluentAssertions;
 using Microsoft.AspNetCore.Components;
 using MudBlazor.Charts;
 using MudBlazor.Extensions;
@@ -77,10 +78,10 @@ namespace MudBlazor.UnitTests.Charts
             legend.Should().NotBeNull(because: "we have a legend");
             legend.FindAll(LEGEND_CSS_SELECTOR).Should().HaveCount(chartSeries.Count, because: "the number series should match the legend item count");
             // click second item of legend (because SelectedIndex starts with 0)
-            legend.FindAll(LEGEND_CSS_SELECTOR).Skip(1).First().Click();
+            await legend.FindAll(LEGEND_CSS_SELECTOR).Skip(1).First().ClickAsync();
             comp.Instance.GetState(x => x.SelectedIndex).Should().Be(1, because: "second legend item was clicked");
             // click first item of legend (to check, if get's back to 0)
-            legend.FindAll(LEGEND_CSS_SELECTOR).Skip(0).First().Click();
+            await legend.FindAll(LEGEND_CSS_SELECTOR).Skip(0).First().ClickAsync();
             comp.Instance.GetState(x => x.SelectedIndex).Should().Be(0, because: "first legend item was clicked");
 
             if (chartSeries.Count <= 3)
@@ -95,13 +96,13 @@ namespace MudBlazor.UnitTests.Charts
             if (chartSeries.TryGetIndexOfDataValue(0, 40, out var index))
             {
                 bars[index].OuterHtml.Should()
-                    .Contain("d=\"M 34 270.8333 L 34 172.5\"");
+                    .Contain("d=\"M 34 261 L 34 143\"");
             }
 
             if (chartSeries.TryGetIndexOfDataValue(0, 80, out index))
             {
                 bars[index].OuterHtml.Should()
-                    .Contain("d=\"M 569.5 270.8333 L 569.5 74.1667\"");
+                    .Contain("d=\"M 569.5 261 L 569.5 25\"");
             }
 
             await comp.SetParametersAndRenderAsync(parameters => parameters
@@ -153,18 +154,65 @@ namespace MudBlazor.UnitTests.Charts
             if (chartSeries.TryGetIndexOfDataValue(0, 40, out var index))
             {
                 bars[index].OuterHtml.Should()
-                    .Contain("d=\"M 34.183 270.8333 L 34.183 172.5\"");
+                    .Contain("d=\"M 34.183 261 L 34.183 143\"");
             }
 
             if (chartSeries.TryGetIndexOfDataValue(0, 80, out index))
             {
                 bars[index].OuterHtml.Should()
-                    .Contain("d=\"M 569.2941 270.8333 L 569.2941 74.1667\"");
+                    .Contain("d=\"M 569.2941 261 L 569.2941 25\"");
             }
 
             await comp.SetParametersAndRenderAsync(parameters => parameters.Add(p => p.ChartOptions, new ChartOptions() { ChartPalette = _modifiedPalette }));
 
             comp.Markup.Should().Contain(_modifiedPalette[0]);
+        }
+
+        [Test]
+        public void BarChartXAxisLabelRotation90UsesRotatedLabelSpacing()
+        {
+            var chartSeries = new List<ChartSeries<double>>
+            {
+                new() { Name = "Sales", Data = new double[] { 40, 20 } },
+            };
+            string[] xAxisLabels = { "January", "February" };
+
+            var unrotated = Context.Render<MudChart<double>>(parameters => parameters
+                .Add(p => p.ChartType, ChartType.Bar)
+                .Add(p => p.Height, "350px")
+                .Add(p => p.Width, "100%")
+                .Add(p => p.ChartSeries, chartSeries)
+                .Add(p => p.ChartLabels, xAxisLabels)
+                .Add(p => p.ChartOptions, new BarChartOptions { XAxisLabelRotation = 0 }));
+
+            var rotated = Context.Render<MudChart<double>>(parameters => parameters
+                .Add(p => p.ChartType, ChartType.Bar)
+                .Add(p => p.Height, "350px")
+                .Add(p => p.Width, "100%")
+                .Add(p => p.ChartSeries, chartSeries)
+                .Add(p => p.ChartLabels, xAxisLabels)
+                .Add(p => p.ChartOptions, new BarChartOptions { XAxisLabelRotation = 90 }));
+
+            var unrotatedXAxisLabel = unrotated.Find("g.mud-charts-xaxis text");
+            var rotatedXAxisLabel = rotated.Find("g.mud-charts-xaxis text");
+
+            rotatedXAxisLabel.GetAttribute("text-anchor").Should().Be("end");
+            rotatedXAxisLabel.GetAttribute("transform").Should().StartWith("rotate(-90 ");
+            rotatedXAxisLabel.GetAttribute("y").Should().Be("320");
+
+            var unrotatedLabelY = double.Parse(unrotatedXAxisLabel.GetAttribute("y")!, CultureInfo.InvariantCulture);
+            var rotatedLabelY = double.Parse(rotatedXAxisLabel.GetAttribute("y")!, CultureInfo.InvariantCulture);
+            rotatedLabelY.Should().BeLessThan(unrotatedLabelY, because: "rotated labels need a larger bottom offset from the chart edge");
+
+            static double GetYCoordinate(string pathData)
+            {
+                var coordinates = pathData.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                return double.Parse(coordinates[2], CultureInfo.InvariantCulture);
+            }
+
+            var unrotatedPlotBottom = GetYCoordinate(unrotated.Find("g.mud-charts-gridlines-yaxis path").GetAttribute("d")!);
+            var rotatedPlotBottom = GetYCoordinate(rotated.Find("g.mud-charts-gridlines-yaxis path").GetAttribute("d")!);
+            rotatedPlotBottom.Should().BeLessThan(unrotatedPlotBottom, because: "rotated labels need more bottom plot spacing");
         }
 
         [Test]
@@ -229,7 +277,7 @@ namespace MudBlazor.UnitTests.Charts
         }
 
         [Test]
-        public async Task BarChart_CanHideSeries_Test()
+        public async Task BarChart_CanHideSeries()
         {
             var chartSeries = new List<ChartSeries<double>>()
             {

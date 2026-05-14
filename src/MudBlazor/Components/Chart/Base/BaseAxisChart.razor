@@ -1,19 +1,20 @@
 ﻿@namespace MudBlazor.Charts
-@using System.Globalization
 
 @inherits MudComponentBase
 
 @typeparam T
 @typeparam TChartOptions
 
-<svg @ref="_svgRef" @attributes="UserAttributes" class="@($"{ChartClass} mud-ltr")" width="@Width" height="@Height" viewBox="0 0 @ViewBoxWidth.ToStr() @ViewBoxHeight.ToStr()" style="@HoveredStylename">
+<svg @ref="_svgRef" @attributes="UserAttributes" class="@($"{ChartClass} mud-ltr")" 
+     width="@(MatchBoundsToSize ? "100%" : Width)" height="@Height" viewBox="0 0 @ViewBoxWidth.ToStr() @ViewBoxHeight.ToStr()"
+     style="@HoveredStylename">
     <Filters />
 
     <g class="mud-charts-grid">
         @if (XAxisTitle is not null)
         {
-            <g transform="translate(@(ToS(ViewBoxWidth / 2)), 10)">
-                <text class="mud-charts-yaxis axis-title" font-size="14px" text-anchor="middle" dominant-baseline="hanging">@XAxisTitle</text>
+            <g transform="translate(@(ToS(ViewBoxWidth / 2)), @AxisTitleOffset)">
+                <text class="mud-charts-xaxis" font-size="14px" text-anchor="middle" dominant-baseline="hanging">@XAxisTitle</text>
             </g>
         }
         @if (ChartOptions?.YAxisLines is true)
@@ -43,8 +44,8 @@
     </g>
     @if (YAxisTitle is not null)
     {
-        <g transform="translate(@(ToS(-1 * (_yAxisLabelSize?.Width ?? 2 / 2))), @(ToS(ViewBoxHeight / 2)))">
-            <text class="mud-charts-yaxis axis-title" transform="rotate(-90)" font-size="14px" text-anchor="middle" dominant-baseline="hanging">@YAxisTitle</text>
+        <g transform="translate(@AxisTitleOffset, @(ToS(ViewBoxHeight / 2)))">
+            <text class="mud-charts-yaxis" transform="rotate(-90)" font-size="14px" text-anchor="middle" dominant-baseline="hanging">@YAxisTitle</text>
         </g>
     }
     <g @ref="_xAxisGroupElementReference" class="mud-charts-xaxis">
@@ -53,8 +54,10 @@
             var verticalLineValue = VerticalValues[i];
             var x = verticalLineValue.X.ToStr();
             var y = verticalLineValue.Y.ToStr();
-            var rotation = (-ChartOptions?.XAxisLabelRotation ?? 0).ToString();
-            @((MarkupString)$"<text x='{x}' y='{y}' font-size='12px' text-anchor='middle' dominant-baseline='middle' transform='rotate({rotation} {x} {y})'>{verticalLineValue.Value}</text>")
+            var rotationValue = ChartOptions?.XAxisLabelRotation ?? 0;
+            var rotation = (-rotationValue).ToString();
+            var textAnchor = rotationValue > 0 ? "end" : rotationValue < 0 ? "start" : "middle";
+            @((MarkupString)$"<text x='{x}' y='{y}' font-size='12px' text-anchor='{textAnchor}' dominant-baseline='middle' transform='rotate({rotation} {x} {y})'>{verticalLineValue.Value}</text>")
         }
     </g>
     <g class="@($"mud-charts-{ChartType?.ToString().ToLower()}-series")">
@@ -65,17 +68,10 @@
 
     @CustomGraphics
 
-    @if (ChartOptions?.ShowToolTips is true) 
+    @if (ChartOptions?.ShowToolTips is true)
     {
         <g class="mud-charts-tooltip" style="@TooltipStylename">
             @TooltipContent
         </g>
     }
 </svg>
-
-@* @if (XAxisTitle is not null)
-{
-    <MudStack Class="mt-2" Row="true" Justify="Justify.Center">
-        <MudText Class="mud-charts-xaxis axis-title" Typo="Typo.body2">@XAxisTitle</MudText>
-    </MudStack>
-} *@

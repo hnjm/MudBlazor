@@ -11,7 +11,6 @@ using MudBlazor.Extensions;
 using MudBlazor.Interop;
 using MudBlazor.Utilities.Debounce;
 
-#nullable enable
 namespace MudBlazor.Charts;
 
 /// <summary>
@@ -37,7 +36,7 @@ public abstract class MudRadialChartBase<T, TOptions> : MudChartBase<T, TOptions
     private const int DebounceIntervalMs = 200;
 
     private readonly DotNetObjectReference<MudRadialChartBase<T, TOptions>> _dotNetObjectReference;
-    private readonly DebounceDispatcher _debouncer = new(DebounceIntervalMs);
+    private readonly DebounceDispatcher _debouncer = new(DebounceIntervalMs, leading: true);
 
     private ElementSize? _elementSize;
 
@@ -96,12 +95,16 @@ public abstract class MudRadialChartBase<T, TOptions> : MudChartBase<T, TOptions
         _paths.Clear();
         _legends.Clear();
         HiddenIndices.Clear();
-        _hoveredSegment = null;
 
-        if (MatchBoundsToSize && _elementSize is null) return;
+        if (MatchBoundsToSize && _elementSize is null)
+        {
+            return;
+        }
 
         if (ChartSeries == null || ChartSeries.Count == 0)
+        {
             return;
+        }
 
         RebuildChart();
     }
@@ -137,7 +140,9 @@ public abstract class MudRadialChartBase<T, TOptions> : MudChartBase<T, TOptions
     protected T[] AggregateSeriesData(AggregationOption aggregation)
     {
         if (aggregation == AggregationOption.None || ChartSeries is null || ChartSeries.Count == 0 || !ChartSeries.Any(x => x.Visible))
+        {
             return [];
+        }
 
         var maxCategoryLength = ChartOptions!.AggregationOption == AggregationOption.GroupByLabel
                 ? GetMaxCategoryLengthForLabelGrouping()
@@ -149,16 +154,15 @@ public abstract class MudRadialChartBase<T, TOptions> : MudChartBase<T, TOptions
         {
             AggregationOption.GroupByLabel => AggregateByLabel(aggregated),
             AggregationOption.GroupByDataSet => AggregateByDataSet(aggregated),
-            _ => throw new ArgumentOutOfRangeException(nameof(aggregation), $"Unsupported aggregation: {aggregation}")
+            _ => throw new ArgumentOutOfRangeException(nameof(aggregation), $@"Unsupported aggregation: {aggregation}")
         };
     }
 
     private int GetMaxCategoryLengthForLabelGrouping()
     {
-        if (ChartLabels.Length > 0)
-            return ChartLabels.Length;
-
-        return ChartSeries.Where(x => x.Data?.Values != null).DefaultIfEmpty()
+        return ChartLabels.Length > 0
+            ? ChartLabels.Length
+            : ChartSeries.Where(x => x.Data?.Values != null).DefaultIfEmpty()
                           .Max(x => x?.Data?.Values.Count ?? 0);
     }
 
@@ -171,7 +175,9 @@ public abstract class MudRadialChartBase<T, TOptions> : MudChartBase<T, TOptions
             for (var i = 0; i < values.Count; i++)
             {
                 if (!HiddenIndices.Contains(i) && i < aggregated.Length)
+                {
                     aggregated[i] += values[i];
+                }
             }
         }
 
@@ -184,7 +190,10 @@ public abstract class MudRadialChartBase<T, TOptions> : MudChartBase<T, TOptions
 
         foreach (var (series, index) in chartSeries.Select((s, i) => (s, i)))
         {
-            if (!series.Visible) continue;
+            if (!series.Visible)
+            {
+                continue;
+            }
 
             aggregated[index] = series.Data?.Values.SumGeneric() ?? T.Zero;
         }
@@ -198,20 +207,34 @@ public abstract class MudRadialChartBase<T, TOptions> : MudChartBase<T, TOptions
     /// <param name="chartLabels">The labels for the chart.</param>
     protected void BuildLegends(string[] chartLabels)
     {
+        var isGrouped = ChartOptions!.AggregationOption == AggregationOption.GroupByLabel;
+        var indicesWithPaths = _paths.Select(p => p.Index).ToHashSet();
+
         for (var i = 0; i < chartLabels.Length; i++)
         {
             var label = chartLabels[i];
 
             if (string.IsNullOrWhiteSpace(label))
+            {
                 continue;
+            }
+
+            var hasPath = indicesWithPaths.Contains(i);
+
+            var visible = isGrouped
+                ? !HiddenIndices.Contains(i) && hasPath
+                : i < ChartSeries.Count && ChartSeries[i].Visible;
+
+            if (!CanHideSeries && !visible)
+            {
+                continue;
+            }
 
             _legends.Add(new SvgLegend
             {
                 Index = i,
                 Labels = label,
-                Visible = ChartOptions!.AggregationOption == AggregationOption.GroupByLabel
-                    ? !HiddenIndices.Contains(i)
-                    : ChartSeries[i].Visible,
+                Visible = visible,
                 OnVisibilityChanged = EventCallback.Factory.Create<SvgLegend>(this, HandleLegendVisibilityChanged)
             });
         }
@@ -246,18 +269,17 @@ public abstract class MudRadialChartBase<T, TOptions> : MudChartBase<T, TOptions
     /// <summary>
     /// Scales the input data to the range between 0 and 1
     /// </summary>
-    protected T[] GetNormalizedData()
+    protected double[] GetNormalizedData()
     {
         if (ChartSeries is null || ChartSeries.Count == 0)
+        {
             return [];
+        }
 
         var data = AggregateSeriesData(ChartOptions!.AggregationOption);
-        var total = data.SumGeneric();
+        var total = double.CreateSaturating(data.SumGeneric());
 
-        if (total == T.Zero)
-            return data;
-
-        return data.Select(x => T.Abs(x) / total).ToArray();
+        return total == 0.0 ? (new double[data.Length]) : data.Select(x => double.CreateSaturating(T.Abs(x)) / total).ToArray();
     }
 
     /// <summary>
@@ -267,12 +289,18 @@ public abstract class MudRadialChartBase<T, TOptions> : MudChartBase<T, TOptions
     protected void HandleLegendVisibilityChanged(SvgLegend legend)
     {
         if (legend.Visible)
+        {
             HiddenIndices.Remove(legend.Index);
+        }
         else
+        {
             HiddenIndices.Add(legend.Index);
+        }
 
         if (ChartOptions!.AggregationOption == AggregationOption.GroupByDataSet)
+        {
             ChartSeries[legend.Index].Visible = legend.Visible;
+        }
 
         RebuildChart();
     }
@@ -332,18 +360,22 @@ public abstract class MudRadialChartBase<T, TOptions> : MudChartBase<T, TOptions
     public void OnElementSizeChanged(ElementSize elementSize)
     {
         if (elementSize == null || elementSize.Timestamp <= _elementSize?.Timestamp)
+        {
             return;
+        }
 
         _elementSize = elementSize;
 
         if (!MatchBoundsToSize)
+        {
             return;
+        }
 
         var minDimension = Math.Min(_elementSize.Width, _elementSize.Height);
         _boundWidth = minDimension;
         _boundHeight = minDimension;
 
-        _debouncer.DebounceAfterFirstExecuteAsync(async () =>
+        _debouncer.DebounceAsync(async () =>
         {
             await InvokeAsync(() =>
             {
@@ -370,7 +402,7 @@ public abstract class MudRadialChartBase<T, TOptions> : MudChartBase<T, TOptions
     {
         if (disposing)
         {
-            _debouncer?.Cancel();
+            _debouncer.Dispose();
         }
 
         _dotNetObjectReference.Dispose();

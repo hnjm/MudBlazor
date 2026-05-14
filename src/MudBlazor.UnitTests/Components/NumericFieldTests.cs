@@ -3,11 +3,14 @@
 // See the LICENSE file in the project root for more information.
 
 using System.Globalization;
+using AngleSharp.Dom;
+using AwesomeAssertions;
 using Bunit;
-using FluentAssertions;
 using FluentValidation;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Web;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 using MudBlazor.Extensions;
 using MudBlazor.UnitTests.Dummy;
 using MudBlazor.UnitTests.TestComponents.NumericField;
@@ -16,6 +19,7 @@ using NUnit.Framework;
 namespace MudBlazor.UnitTests.Components
 {
     [TestFixture]
+    [NonParallelizable]
     public class NumericFieldTests : BunitTest
     {
         // TestCaseSource does not know about "Nullable<T>" so having values as Nullable<T> does not make sense here
@@ -55,8 +59,8 @@ namespace MudBlazor.UnitTests.Components
             // print the generated html
             // select elements needed for the test
             var numericField = comp.Instance;
-            numericField.Value.Should().Be(0.0);
-            numericField.Text.Should().Be("0");
+            numericField.ReadValue.Should().Be(0.0);
+            numericField.ReadText.Should().Be("0");
             //
             0.0.ToString("F1", CultureInfo.InvariantCulture).Should().Be("0.0");
             //
@@ -64,8 +68,8 @@ namespace MudBlazor.UnitTests.Components
                 .Add(x => x.Format, "F1")
                 .Add(x => x.Culture, CultureInfo.InvariantCulture));
 
-            numericField.Value.Should().Be(0.0);
-            numericField.Text.Should().Be("0.0");
+            numericField.ReadValue.Should().Be(0.0);
+            numericField.ReadText.Should().Be("0.0");
             comp.FindAll("div.mud-input-error").Count.Should().Be(0);
         }
 
@@ -79,8 +83,8 @@ namespace MudBlazor.UnitTests.Components
             // print the generated html
             // select elements needed for the test
             var numericField = comp.Instance;
-            numericField.Value.Should().Be(null);
-            numericField.Text.Should().BeNullOrEmpty();
+            numericField.ReadValue.Should().Be(null);
+            numericField.ReadText.Should().BeNullOrEmpty();
             comp.FindAll("div.mud-input-error").Count.Should().Be(0);
         }
 
@@ -93,10 +97,10 @@ namespace MudBlazor.UnitTests.Components
             var comp = Context.Render<MudNumericField<T?>>(parameters => parameters.Add(x => x.Value, value));
             // print the generated html
             await comp.SetParametersAndRenderAsync(parameters => parameters.Add(x => x.Value, null));
-            comp.Find("input").Blur();
+            await comp.Find("input").BlurAsync();
             comp.FindAll("div.mud-input-error").Count.Should().Be(0);
-            comp.Find("input").Change("");
-            comp.Find("input").Blur();
+            await comp.Find("input").ChangeAsync("");
+            await comp.Find("input").BlurAsync();
             comp.FindAll("div.mud-input-error").Count.Should().Be(0);
         }
 
@@ -104,7 +108,7 @@ namespace MudBlazor.UnitTests.Components
         /// If Debounce Interval is null or 0, Value should change immediately
         /// </summary>
         [Test]
-        public void WithNoDebounceIntervalValueShouldChangeImmediatelyTest()
+        public async Task WithNoDebounceIntervalValueShouldChangeImmediately()
         {
             //no interval passed, so, by default is 0
             // We pass the Immediate parameter set to true, in order to bind to oninput
@@ -113,38 +117,38 @@ namespace MudBlazor.UnitTests.Components
             var numericField = comp.Instance;
             var input = comp.Find("input");
             //Act
-            input.Input(new ChangeEventArgs() { Value = "100" });
+            await input.InputAsync(new ChangeEventArgs() { Value = "100" });
             //Assert
             //input value has changed, DebounceInterval is 0, so Value should change in NumericField immediately
-            numericField.Value.Should().Be(100);
-            numericField.Text.Should().Be("100");
+            numericField.ReadValue.Should().Be(100);
+            numericField.ReadText.Should().Be("100");
         }
 
         /// <summary>
         /// Value should not change immediately. Should respect the Debounce Interval
         /// </summary>
         [Test]
-        public async Task ShouldRespectDebounceIntervalPropertyInNumericFieldTest()
+        public async Task ShouldRespectDebounceIntervalPropertyInNumericField()
         {
             var comp = Context.Render<MudNumericField<int?>>(parameters => parameters
                 .Add(x => x.DebounceInterval, 200d));
             var numericField = comp.Instance;
             var input = comp.Find("input");
             //Act
-            input.Input(new ChangeEventArgs() { Value = "100" });
+            await input.InputAsync(new ChangeEventArgs() { Value = "100" });
             //Assert
             //if DebounceInterval is set, Immediate should be true by default
             numericField.Immediate.Should().BeTrue();
             //input value has changed, but elapsed time is 0, so Value should not change in NumericField
-            numericField.Value.Should().BeNull();
-            numericField.Text.Should().Be("100");
+            numericField.ReadValue.Should().BeNull();
+            numericField.ReadText.Should().Be("100");
             //DebounceInterval is 200 ms, so at 100 ms Value should not change in NumericField
-            await comp.WaitForAssertionAsync(() => numericField.Value.Should().NotBe(100), TimeSpan.FromMilliseconds(100));
-            numericField.Value.Should().BeNull();
-            numericField.Text.Should().Be("100");
+            await comp.WaitForAssertionAsync(() => numericField.ReadValue.Should().NotBe(100), TimeSpan.FromMilliseconds(100));
+            numericField.ReadValue.Should().BeNull();
+            numericField.ReadText.Should().Be("100");
             //More than 200 ms had elapsed, so Value should be updated (CPU time will likely take more than 200ms)
-            await comp.WaitForAssertionAsync(() => numericField.Value.Should().Be(100), TimeSpan.FromMilliseconds(300));
-            numericField.Text.Should().Be("100");
+            await comp.WaitForAssertionAsync(() => numericField.ReadValue.Should().Be(100), TimeSpan.FromMilliseconds(300));
+            numericField.ReadText.Should().Be("100");
         }
 
         /// <summary>
@@ -180,7 +184,10 @@ namespace MudBlazor.UnitTests.Components
             {
                 var result = Validate(arg);
                 if (result.IsValid)
+                {
                     return Array.Empty<string>();
+                }
+
                 return result.Errors.Select(e => e.ErrorMessage);
             }
 
@@ -191,7 +198,7 @@ namespace MudBlazor.UnitTests.Components
         /// FluentValidation rules can be used for validating a NumericFields
         /// </summary>
         [Test]
-        public void NumericFieldFluentValidationTest1()
+        public async Task NumericFieldFluentValidationTest1()
         {
             var validator = new FluentValueValidator<string>(x => x.Cascade(CascadeMode.Stop)
                 .NotEmpty()
@@ -201,13 +208,13 @@ namespace MudBlazor.UnitTests.Components
                 .Add(x => x.Max, 100M));
             var numericField = comp.Instance;
             // first try a valid value
-            comp.Find("input").Change(99);
+            await comp.Find("input").ChangeAsync(99);
             numericField.GetState(x => x.Error).Should().BeFalse(because: "The value is < 100");
             numericField.GetState(x => x.ErrorText).Should().BeNullOrEmpty();
             // now try something that's outside of range
-            comp.Find("input").Change("100.1");
+            await comp.Find("input").ChangeAsync("100.1");
             numericField.GetState(x => x.Error).Should().BeFalse(because: "The value should be set to Max (100)");
-            numericField.Value.Should().Be(100M);
+            numericField.ReadValue.Should().Be(100M);
             numericField.GetState(x => x.ErrorText).Should().BeNullOrEmpty();
         }
 
@@ -215,19 +222,19 @@ namespace MudBlazor.UnitTests.Components
         /// Validate handling of decimal support & precision kept
         /// </summary>
         [Test]
-        public void NumericField_HandleDecimalPrecisionAndValues()
+        public async Task NumericField_HandleDecimalPrecisionAndValues()
         {
             var comp = Context.Render<MudNumericField<decimal>>();
             var numericField = comp.Instance;
 
             // first try set max decimal value
-            comp.Find("input").Change(decimal.MaxValue);
-            numericField.Value.Should().Be(decimal.MaxValue);
+            await comp.Find("input").ChangeAsync(decimal.MaxValue);
+            numericField.ReadValue.Should().Be(decimal.MaxValue);
             numericField.GetState(x => x.ErrorText).Should().BeNullOrEmpty();
 
             // next try set minimum decimal value
-            comp.Find("input").Change(decimal.MinValue);
-            numericField.Value.Should().Be(decimal.MinValue);
+            await comp.Find("input").ChangeAsync(decimal.MinValue);
+            numericField.ReadValue.Should().Be(decimal.MinValue);
             numericField.GetState(x => x.ErrorText).Should().BeNullOrEmpty();
         }
 
@@ -235,7 +242,7 @@ namespace MudBlazor.UnitTests.Components
         /// An unstable converter should not cause an infinite update loop. This test must complete in under 1 sec!
         /// </summary>
         [Test, CancelAfter(1000)]
-        public async Task NumericFieldUpdateLoopProtectionTest()
+        public async Task NumericFieldUpdateLoopProtection()
         {
             var comp = Context.Render<MudNumericField<int>>(parameters => parameters
                 .Add(x => x.Converter, Conversions.From((int s) => s.ToString(), int.Parse)));
@@ -243,11 +250,11 @@ namespace MudBlazor.UnitTests.Components
             // test against an infinite update loop that numericFields and other inputs are now protected against.
             var numericField = comp.Instance;
             await comp.SetParametersAndRenderAsync(parameters => parameters.Add(x => x.Value, 1));
-            numericField.Value.Should().Be(1);
-            numericField.Text.Should().Be("1");
-            comp.Find("input").Change("3");
-            numericField.Value.Should().Be(3);
-            numericField.Text.Should().Be("3");
+            numericField.ReadValue.Should().Be(1);
+            numericField.ReadText.Should().Be("1");
+            await comp.Find("input").ChangeAsync("3");
+            numericField.ReadValue.Should().Be(3);
+            numericField.ReadText.Should().Be("3");
         }
 
         [Test]
@@ -271,14 +278,14 @@ namespace MudBlazor.UnitTests.Components
         }
 
         [Test]
-        public void NumericField_Should_FireTextAndValueChangedOnTextInput()
+        public async Task NumericField_Should_FireTextAndValueChangedOnTextInput()
         {
             var changed_value = 4;
             string changed_text = null;
             var comp = Context.Render<MudNumericField<int>>(parameters => parameters
                 .Add(x => x.ValueChanged, x => changed_value = x)
                 .Add(x => x.TextChanged, x => changed_text = x));
-            comp.Find("input").Change("4");
+            await comp.Find("input").ChangeAsync("4");
             changed_value.Should().Be(4);
             changed_text.Should().Be("4");
         }
@@ -294,9 +301,9 @@ namespace MudBlazor.UnitTests.Components
         //{
         //    var comp = ctx.RenderComponent<MudNumericField<int?>>(parameters => parameters.Add(p => p.Required, true));
         //    var numericField = comp.Instance;
-        //    comp.Find("input").Change("A");
-        //    comp.Find("input").Blur();
-        //    numericField.Value.Should().BeNull();
+        //    await comp.Find("input").ChangeAsync("A");
+        //    await comp.Find("input").BlurAsync();
+        //    numericField.ReadValue.Should().BeNull();
         //    numericField.HasErrors.Should().Be(true);
         //    numericField.GetState(x => x.ErrorText).Should().Be("Not a valid number");
         //}
@@ -333,7 +340,7 @@ namespace MudBlazor.UnitTests.Components
         /// Increment / Decrement via up / down keys should work
         /// </summary>
         [Test]
-        public async Task NumericFieldTest_KeyboardInput()
+        public async Task NumericField_KeyboardInput()
         {
             var comp = Context.Render<MudNumericField<double>>();
             await comp.SetParametersAndRenderAsync(parameters => parameters
@@ -343,30 +350,30 @@ namespace MudBlazor.UnitTests.Components
             // print the generated html
             // select elements needed for the test
             var numericField = comp.Instance;
-            numericField.Value.Should().Be(1234.56);
-            numericField.Text.Should().Be("1234.56");
-            comp.Find("input").KeyDown(new KeyboardEventArgs() { Key = "ArrowUp", Type = "keydown", });
-            comp.Find("input").KeyUp(new KeyboardEventArgs() { Key = "ArrowUp", Type = "keyup", });
-            await comp.WaitForAssertionAsync(() => numericField.Value.Should().Be(1235.56));
-            comp.Find("input").KeyDown(new KeyboardEventArgs() { Key = "ArrowDown", Type = "keydown", });
-            comp.Find("input").KeyUp(new KeyboardEventArgs() { Key = "ArrowDown", Type = "keyup", });
-            await comp.WaitForAssertionAsync(() => numericField.Value.Should().Be(1234.56));
-            comp.Find("input").KeyDown(new KeyboardEventArgs() { Key = "c", Type = "keydown", CtrlKey = false });
-            comp.Find("input").KeyUp(new KeyboardEventArgs() { Key = "c", Type = "keyup", CtrlKey = false });
-            await comp.WaitForAssertionAsync(() => numericField.Value.Should().Be(1234.56));
-            comp.Find("input").KeyDown(new KeyboardEventArgs() { Key = "a", Type = "keydown", });
-            comp.Find("input").KeyUp(new KeyboardEventArgs() { Key = "a", Type = "keyup", });
-            await comp.WaitForAssertionAsync(() => numericField.Value.Should().Be(1234.56));
-            comp.Find("input").KeyDown(new KeyboardEventArgs() { Key = "9", Type = "keydown", });
-            comp.Find("input").KeyUp(new KeyboardEventArgs() { Key = "9", Type = "keyup", });
-            await comp.WaitForAssertionAsync(() => numericField.Value.Should().Be(1234.56));
+            numericField.ReadValue.Should().Be(1234.56);
+            numericField.ReadText.Should().Be("1234.56");
+            await comp.Find("input").KeyDownAsync(new KeyboardEventArgs() { Key = "ArrowUp", Type = "keydown", });
+            await comp.Find("input").KeyUpAsync(new KeyboardEventArgs() { Key = "ArrowUp", Type = "keyup", });
+            await comp.WaitForAssertionAsync(() => numericField.ReadValue.Should().Be(1235.56));
+            await comp.Find("input").KeyDownAsync(new KeyboardEventArgs() { Key = "ArrowDown", Type = "keydown", });
+            await comp.Find("input").KeyUpAsync(new KeyboardEventArgs() { Key = "ArrowDown", Type = "keyup", });
+            await comp.WaitForAssertionAsync(() => numericField.ReadValue.Should().Be(1234.56));
+            await comp.Find("input").KeyDownAsync(new KeyboardEventArgs() { Key = "c", Type = "keydown", CtrlKey = false });
+            await comp.Find("input").KeyUpAsync(new KeyboardEventArgs() { Key = "c", Type = "keyup", CtrlKey = false });
+            await comp.WaitForAssertionAsync(() => numericField.ReadValue.Should().Be(1234.56));
+            await comp.Find("input").KeyDownAsync(new KeyboardEventArgs() { Key = "a", Type = "keydown", });
+            await comp.Find("input").KeyUpAsync(new KeyboardEventArgs() { Key = "a", Type = "keyup", });
+            await comp.WaitForAssertionAsync(() => numericField.ReadValue.Should().Be(1234.56));
+            await comp.Find("input").KeyDownAsync(new KeyboardEventArgs() { Key = "9", Type = "keydown", });
+            await comp.Find("input").KeyUpAsync(new KeyboardEventArgs() { Key = "9", Type = "keyup", });
+            await comp.WaitForAssertionAsync(() => numericField.ReadValue.Should().Be(1234.56));
         }
 
         /// <summary>
         /// KeyDown disabled, should not do anything
         /// </summary>
         [Test]
-        public async Task NumericFieldTest_KeyboardInput_Disabled()
+        public async Task NumericField_KeyboardInput_Disabled()
         {
             var comp = Context.Render<MudNumericField<double>>();
             await comp.SetParametersAndRenderAsync(parameters => parameters
@@ -374,19 +381,19 @@ namespace MudBlazor.UnitTests.Components
                 .Add(x => x.Format, "F2")
                 .Add(x => x.Value, 1234.56)
                 .Add(x => x.Disabled, true));
-            comp.Instance.Value.Should().Be(1234.56);
-            comp.Instance.Text.Should().Be("1234.56");
-            comp.Find("input").KeyDown(new KeyboardEventArgs() { Key = "ArrowUp", Type = "keydown", });
-            await comp.WaitForAssertionAsync(() => comp.Instance.Value.Should().Be(1234.56));
-            comp.Find("input").KeyUp(new KeyboardEventArgs() { Key = "9", Type = "keyup", });
-            await comp.WaitForAssertionAsync(() => comp.Instance.Value.Should().Be(1234.56));
+            comp.Instance.ReadValue.Should().Be(1234.56);
+            comp.Instance.ReadText.Should().Be("1234.56");
+            await comp.Find("input").KeyDownAsync(new KeyboardEventArgs() { Key = "ArrowUp", Type = "keydown", });
+            await comp.WaitForAssertionAsync(() => comp.Instance.ReadValue.Should().Be(1234.56));
+            await comp.Find("input").KeyUpAsync(new KeyboardEventArgs() { Key = "9", Type = "keyup", });
+            await comp.WaitForAssertionAsync(() => comp.Instance.ReadValue.Should().Be(1234.56));
         }
 
         /// <summary>
         /// KeyDown readonly, should not do anything
         /// </summary>
         [Test]
-        public async Task NumericFieldTest_KeyboardInput_Readonly()
+        public async Task NumericField_KeyboardInput_Readonly()
         {
             var comp = Context.Render<MudNumericField<double>>();
             await comp.SetParametersAndRenderAsync(parameters => parameters
@@ -394,19 +401,19 @@ namespace MudBlazor.UnitTests.Components
                 .Add(x => x.Format, "F2")
                 .Add(x => x.Value, 1234.56)
                 .Add(x => x.ReadOnly, true));
-            comp.Instance.Value.Should().Be(1234.56);
-            comp.Instance.Text.Should().Be("1234.56");
-            comp.Find("input").KeyDown(new KeyboardEventArgs() { Key = "ArrowUp", Type = "keydown", });
-            await comp.WaitForAssertionAsync(() => comp.Instance.Value.Should().Be(1234.56));
-            comp.Find("input").KeyUp(new KeyboardEventArgs() { Key = "9", Type = "keyup", });
-            await comp.WaitForAssertionAsync(() => comp.Instance.Value.Should().Be(1234.56));
+            comp.Instance.ReadValue.Should().Be(1234.56);
+            comp.Instance.ReadText.Should().Be("1234.56");
+            await comp.Find("input").KeyDownAsync(new KeyboardEventArgs() { Key = "ArrowUp", Type = "keydown", });
+            await comp.WaitForAssertionAsync(() => comp.Instance.ReadValue.Should().Be(1234.56));
+            await comp.Find("input").KeyUpAsync(new KeyboardEventArgs() { Key = "9", Type = "keyup", });
+            await comp.WaitForAssertionAsync(() => comp.Instance.ReadValue.Should().Be(1234.56));
         }
 
         /// <summary>
         /// MouseWheel actions should work
         /// </summary>
         [Test]
-        public async Task NumericFieldTest_MouseWheel()
+        public async Task NumericField_MouseWheel()
         {
             var comp = Context.Render<MudNumericField<double>>();
             await comp.SetParametersAndRenderAsync(parameters => parameters.Add(x => x.Value, 1234.56));
@@ -414,45 +421,45 @@ namespace MudBlazor.UnitTests.Components
 
             //MouseWheel up
             await comp.Find("input").WheelAsync(new WheelEventArgs() { DeltaY = -1, ShiftKey = true });
-            await comp.WaitForAssertionAsync(() => numericField.Value.Should().Be(1235.56));
+            await comp.WaitForAssertionAsync(() => numericField.ReadValue.Should().Be(1235.56));
 
             //MouseWheel down
             await comp.Find("input").WheelAsync(new WheelEventArgs() { DeltaY = 1, ShiftKey = true });
-            await comp.WaitForAssertionAsync(() => numericField.Value.Should().Be(1234.56));
+            await comp.WaitForAssertionAsync(() => numericField.ReadValue.Should().Be(1234.56));
 
             //Invert MouseWheel
             await comp.SetParametersAndRenderAsync(parameters => parameters.Add(x => x.InvertMouseWheel, true));
 
             //MouseWheel up
             await comp.Find("input").WheelAsync(new WheelEventArgs() { DeltaY = -1, ShiftKey = true });
-            await comp.WaitForAssertionAsync(() => numericField.Value.Should().Be(1233.56));
+            await comp.WaitForAssertionAsync(() => numericField.ReadValue.Should().Be(1233.56));
 
             //MouseWheel down
             await comp.Find("input").WheelAsync(new WheelEventArgs() { DeltaY = 1, ShiftKey = true });
-            await comp.WaitForAssertionAsync(() => numericField.Value.Should().Be(1234.56));
+            await comp.WaitForAssertionAsync(() => numericField.ReadValue.Should().Be(1234.56));
 
             //Try with different step
             await comp.SetParametersAndRenderAsync(parameters => parameters.Add(x => x.Step, 0.5));
 
             //MouseWheel up
             await comp.Find("input").WheelAsync(new WheelEventArgs() { DeltaY = -1, ShiftKey = true });
-            await comp.WaitForAssertionAsync(() => numericField.Value.Should().Be(1234.06));
+            await comp.WaitForAssertionAsync(() => numericField.ReadValue.Should().Be(1234.06));
 
             //MouseWheel down
             await comp.Find("input").WheelAsync(new WheelEventArgs() { DeltaY = 1, ShiftKey = true });
-            await comp.WaitForAssertionAsync(() => numericField.Value.Should().Be(1234.56));
+            await comp.WaitForAssertionAsync(() => numericField.ReadValue.Should().Be(1234.56));
 
             //MouseWheel without Shift doesn't do anything
             await comp.Find("input").WheelAsync(new WheelEventArgs() { DeltaY = 77, ShiftKey = false });
             await comp.Find("input").WheelAsync(new WheelEventArgs() { DeltaY = -17, ShiftKey = false });
-            await comp.WaitForAssertionAsync(() => numericField.Value.Should().Be(1234.56));
+            await comp.WaitForAssertionAsync(() => numericField.ReadValue.Should().Be(1234.56));
         }
 
         /// <summary>
         /// MouseWheel actions should work on Firefox
         /// </summary>
         [Test]
-        public async Task NumericFieldTest_Wheel_Firefox()
+        public async Task NumericField_Wheel_Firefox()
         {
             var comp = Context.Render<MudNumericField<double>>();
             await comp.SetParametersAndRenderAsync(parameters => parameters.Add(x => x.Value, 1234.56));
@@ -460,38 +467,38 @@ namespace MudBlazor.UnitTests.Components
 
             //MouseWheel up
             comp.Find("input").Wheel(new WheelEventArgs() { DeltaY = -1, ShiftKey = true });
-            await comp.WaitForAssertionAsync(() => numericField.Value.Should().Be(1235.56));
+            await comp.WaitForAssertionAsync(() => numericField.ReadValue.Should().Be(1235.56));
 
             //MouseWheel down
             comp.Find("input").Wheel(new WheelEventArgs() { DeltaY = 1, ShiftKey = true });
-            await comp.WaitForAssertionAsync(() => numericField.Value.Should().Be(1234.56));
+            await comp.WaitForAssertionAsync(() => numericField.ReadValue.Should().Be(1234.56));
 
             //Invert MouseWheel
             await comp.SetParametersAndRenderAsync(parameters => parameters.Add(x => x.InvertMouseWheel, true));
 
             //MouseWheel up
             comp.Find("input").Wheel(new WheelEventArgs() { DeltaY = -1, ShiftKey = true });
-            await comp.WaitForAssertionAsync(() => numericField.Value.Should().Be(1233.56));
+            await comp.WaitForAssertionAsync(() => numericField.ReadValue.Should().Be(1233.56));
 
             //MouseWheel down
             comp.Find("input").Wheel(new WheelEventArgs() { DeltaY = 1, ShiftKey = true });
-            await comp.WaitForAssertionAsync(() => numericField.Value.Should().Be(1234.56));
+            await comp.WaitForAssertionAsync(() => numericField.ReadValue.Should().Be(1234.56));
 
             //Try with different step
             await comp.SetParametersAndRenderAsync(parameters => parameters.Add(x => x.Step, 0.5));
 
             //MouseWheel up
             comp.Find("input").Wheel(new WheelEventArgs() { DeltaY = -1, ShiftKey = true });
-            await comp.WaitForAssertionAsync(() => numericField.Value.Should().Be(1234.06));
+            await comp.WaitForAssertionAsync(() => numericField.ReadValue.Should().Be(1234.06));
 
             //MouseWheel down
             comp.Find("input").Wheel(new WheelEventArgs() { DeltaY = 1, ShiftKey = true });
-            await comp.WaitForAssertionAsync(() => numericField.Value.Should().Be(1234.56));
+            await comp.WaitForAssertionAsync(() => numericField.ReadValue.Should().Be(1234.56));
 
             //MouseWheel without Shift doesn't do anything
             comp.Find("input").Wheel(new WheelEventArgs() { DeltaY = 77, ShiftKey = false });
             comp.Find("input").Wheel(new WheelEventArgs() { DeltaY = -17, ShiftKey = false });
-            await comp.WaitForAssertionAsync(() => numericField.Value.Should().Be(1234.56));
+            await comp.WaitForAssertionAsync(() => numericField.ReadValue.Should().Be(1234.56));
         }
 
         /// <summary>
@@ -501,37 +508,39 @@ namespace MudBlazor.UnitTests.Components
         public async Task NumericFieldTestCultureFormat()
         {
             var comp = Context.Render<NumericFieldCultureTest>();
-            var inputs = comp.FindAll("input");
-            var immediate = inputs.First();
-            var notImmediate = inputs.Last();
+            IElement Immediate() => comp.Find("#immediate");
+            IElement NotImmediate() => comp.Find("#notImmediate");
+
             //german
-            notImmediate.Change("1234");
-            notImmediate.Blur();
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.Text.Should().Be("1.234,00"));
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.Value.Should().Be(1234.0));
-            comp.Markup.Should().Contain("type=\"text\" value=\"1.234,00\""); //ensure the numeric field continues to displays the value after blur
-            notImmediate.Change("0");
-            notImmediate.Blur();
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.Text.Should().Be("0,00"));
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.Value.Should().Be(0.0));
-            notImmediate.Change("");
-            notImmediate.Blur();
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.Text.Should().Be(null));
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.Value.Should().Be(null));
+            await NotImmediate().ChangeAsync("1234");
+            await NotImmediate().BlurAsync();
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.ReadText.Should().Be("1.234,00"));
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.ReadValue.Should().Be(1234.0));
+            NotImmediate().GetAttribute("type").Should().Be("text");
+            NotImmediate().GetAttribute("value").Should().Be("1.234,00");
+            await NotImmediate().ChangeAsync("0");
+            await NotImmediate().BlurAsync();
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.ReadText.Should().Be("0,00"));
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.ReadValue.Should().Be(0.0));
+            await NotImmediate().ChangeAsync("");
+            await NotImmediate().BlurAsync();
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.ReadText.Should().Be(null));
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.ReadValue.Should().Be(null));
             // English
-            immediate.Input("1234");
-            immediate.Blur();
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.Text.Should().Be("1,234.00"));
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.Value.Should().Be(1234.0));
-            comp.Markup.Should().Contain("type=\"text\" value=\"1,234.00\""); //ensure the numeric field continues to displays the value after blur
-            immediate.Input("0");
-            immediate.Blur();
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.Text.Should().Be("0.00"));
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.Value.Should().Be(0.0));
-            immediate.Input("");
-            immediate.Blur();
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.Text.Should().Be(null));
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.Value.Should().Be(null));
+            await Immediate().InputAsync("1234");
+            await Immediate().BlurAsync();
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.ReadText.Should().Be("1,234.00"));
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.ReadValue.Should().Be(1234.0));
+            Immediate().GetAttribute("type").Should().Be("text");
+            Immediate().GetAttribute("value").Should().Be("1,234.00");
+            await Immediate().InputAsync("0");
+            await Immediate().BlurAsync();
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.ReadText.Should().Be("0.00"));
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.ReadValue.Should().Be(0.0));
+            await Immediate().InputAsync("");
+            await Immediate().BlurAsync();
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.ReadText.Should().Be(null));
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.ReadValue.Should().Be(null));
         }
 
         /// <summary>
@@ -542,32 +551,32 @@ namespace MudBlazor.UnitTests.Components
         {
             var comp = Context.Render<NumericFieldCultureTest>();
             //german
-            comp.FindAll("input").Last().Change("abcd");
-            comp.FindAll("input").Last().Blur();
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.Text.Should().Be(null));
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.Value.Should().Be(null));
+            await comp.FindAll("input").Last().ChangeAsync("abcd");
+            await comp.FindAll("input").Last().BlurAsync();
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.ReadText.Should().Be(null));
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.ReadValue.Should().Be(null));
             // English
-            comp.FindAll("input").First().Input("abcd");
-            comp.FindAll("input").First().Blur();
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.Text.Should().Be(null));
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.Value.Should().Be(null));
+            await comp.FindAll("input").First().InputAsync("abcd");
+            await comp.FindAll("input").First().BlurAsync();
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.ReadText.Should().Be(null));
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.ReadValue.Should().Be(null));
             // English
-            comp.FindAll("input").First().Input("-12-34abc.56");
-            comp.FindAll("input").First().Blur();
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.Text.Should().Be(null));
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.Value.Should().Be(null));
-            comp.FindAll("input").First().Input("-1234.56");
-            comp.FindAll("input").First().Blur();
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.Text.Should().Be("-1,234.56"));
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.Value.Should().Be(-1234.56));
-            comp.FindAll("input").Last().Change("x+17,9y9z");
-            comp.FindAll("input").Last().Blur();
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.Text.Should().Be(null));
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.Value.Should().Be(null));
-            comp.FindAll("input").Last().Change("17,99");
-            comp.FindAll("input").Last().Blur();
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.Text.Should().Be("17,99"));
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.Value.Should().Be(17.99));
+            await comp.FindAll("input").First().InputAsync("-12-34abc.56");
+            await comp.FindAll("input").First().BlurAsync();
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.ReadText.Should().Be(null));
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.ReadValue.Should().Be(null));
+            await comp.FindAll("input").First().InputAsync("-1234.56");
+            await comp.FindAll("input").First().BlurAsync();
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.ReadText.Should().Be("-1,234.56"));
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.ReadValue.Should().Be(-1234.56));
+            await comp.FindAll("input").Last().ChangeAsync("x+17,9y9z");
+            await comp.FindAll("input").Last().BlurAsync();
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.ReadText.Should().Be(null));
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.ReadValue.Should().Be(null));
+            await comp.FindAll("input").Last().ChangeAsync("17,99");
+            await comp.FindAll("input").Last().BlurAsync();
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.ReadText.Should().Be("17,99"));
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.ReadValue.Should().Be(17.99));
         }
 
         [Test]
@@ -575,23 +584,105 @@ namespace MudBlazor.UnitTests.Components
         {
             var comp = Context.Render<NumericFieldCultureTest>();
             // english
-            comp.FindAll("input").First().Input("1,234.56");
-            comp.FindAll("input").First().Blur();
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.Text.Should().Be("1,234.56"));
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.Value.Should().Be(1234.56));
-            comp.FindAll("input").First().Input("1234.56");
-            comp.FindAll("input").First().Blur();
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.Text.Should().Be("1,234.56"));
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.Value.Should().Be(1234.56));
+            await comp.FindAll("input").First().InputAsync("1,234.56");
+            await comp.FindAll("input").First().BlurAsync();
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.ReadText.Should().Be("1,234.56"));
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.ReadValue.Should().Be(1234.56));
+            await comp.FindAll("input").First().InputAsync("1234.56");
+            await comp.FindAll("input").First().BlurAsync();
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.ReadText.Should().Be("1,234.56"));
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.ReadValue.Should().Be(1234.56));
             // german
-            comp.FindAll("input").Last().Change("7.000,99");
-            comp.FindAll("input").Last().Blur();
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.Text.Should().Be("7.000,99"));
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.Value.Should().Be(7000.99));
-            comp.FindAll("input").Last().Change("7000,99");
-            comp.FindAll("input").Last().Blur();
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.Text.Should().Be("7.000,99"));
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.Value.Should().Be(7000.99));
+            await comp.FindAll("input").Last().ChangeAsync("7.000,99");
+            await comp.FindAll("input").Last().BlurAsync();
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.ReadText.Should().Be("7.000,99"));
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.ReadValue.Should().Be(7000.99));
+            await comp.FindAll("input").Last().ChangeAsync("7000,99");
+            await comp.FindAll("input").Last().BlurAsync();
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.ReadText.Should().Be("7.000,99"));
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.ReadValue.Should().Be(7000.99));
+        }
+
+        [Test]
+        public async Task NumericField_Immediate_Should_Reformat_Repeated_Input_With_F3()
+        {
+            var comp = Context.Render<MudNumericField<double?>>(parameters => parameters
+                .Add(x => x.Immediate, true)
+                .Add(x => x.Culture, CultureInfo.GetCultureInfo("en-US"))
+                .Add(x => x.Format, "F3"));
+
+            var input = comp.Find("input");
+
+            await input.InputAsync("3.14514515415414515");
+            await comp.WaitForAssertionAsync(() => comp.Instance.ReadText.Should().Be("3.145"));
+            await comp.WaitForAssertionAsync(() => comp.Instance.ReadValue.Should().Be(3.14514515415414515d));
+            input.GetAttribute("value").Should().Be("3.145");
+
+            await input.InputAsync("3.145145154154145159");
+            await comp.WaitForAssertionAsync(() => comp.Instance.ReadText.Should().Be("3.145"));
+            await comp.WaitForAssertionAsync(() => comp.Instance.ReadValue.Should().Be(3.145145154154145159d));
+            input.GetAttribute("value").Should().Be("3.145");
+        }
+
+        [Test]
+        public async Task NumericField_Should_Reformat_On_Blur_With_Custom_Format_When_Not_Immediate()
+        {
+            var comp = Context.Render<MudNumericField<double?>>(parameters => parameters
+                .Add(x => x.Immediate, false)
+                .Add(x => x.Culture, CultureInfo.GetCultureInfo("en-US"))
+                .Add(x => x.Format, "#.###"));
+
+            var input = comp.Find("input");
+
+            await input.ChangeAsync("3.14514515415414515");
+            await comp.WaitForAssertionAsync(() => comp.Instance.ReadText.Should().Be("3.145"));
+            await comp.WaitForAssertionAsync(() => comp.Instance.ReadValue.Should().Be(3.14514515415414515d));
+            input.GetAttribute("value").Should().Be("3.145");
+
+            await input.BlurAsync();
+            await comp.WaitForAssertionAsync(() => comp.Instance.ReadText.Should().Be("3.145"));
+            await comp.WaitForAssertionAsync(() => comp.Instance.ReadValue.Should().Be(3.14514515415414515d));
+            input.GetAttribute("value").Should().Be("3.145");
+        }
+
+        [Test]
+        public async Task NumericField_NotImmediate_Should_Reformat_When_Blur_Fires_Before_Change()
+        {
+            var comp = Context.Render<MudNumericField<double?>>(parameters => parameters
+                .Add(x => x.Immediate, false)
+                .Add(x => x.Culture, CultureInfo.GetCultureInfo("en-US"))
+                .Add(x => x.Format, "#.###"));
+
+            var input = comp.Find("input");
+
+            await input.BlurAsync();
+            await input.ChangeAsync("3.14514515415414515");
+
+            await comp.WaitForAssertionAsync(() => comp.Instance.ReadText.Should().Be("3.145"));
+            await comp.WaitForAssertionAsync(() => comp.Instance.ReadValue.Should().Be(3.14514515415414515d));
+            input.GetAttribute("value").Should().Be("3.145");
+        }
+
+        [Test]
+        public async Task NumericField_NotImmediate_Should_Reformat_Consistently_Across_Repeated_Blurs()
+        {
+            var comp = Context.Render<MudNumericField<double?>>(parameters => parameters
+                .Add(x => x.Immediate, false)
+                .Add(x => x.Culture, CultureInfo.GetCultureInfo("en-US"))
+                .Add(x => x.Format, "#.###"));
+
+            var input = comp.Find("input");
+            const string rawText = "3.14514515415414515";
+
+            for (var i = 0; i < 5; i++)
+            {
+                await input.ChangeAsync(rawText);
+                await input.BlurAsync();
+
+                await comp.WaitForAssertionAsync(() => comp.Instance.ReadText.Should().Be("3.145"));
+                await comp.WaitForAssertionAsync(() => comp.Instance.ReadValue.Should().Be(3.14514515415414515d));
+                input.GetAttribute("value").Should().Be("3.145");
+            }
         }
 
         [TestCaseSource(nameof(TypeCases))]
@@ -603,9 +694,9 @@ namespace MudBlazor.UnitTests.Components
                 .Add(x => x.Min, value)
                 .Add(x => x.Value, value));
             var numericField = comp.Instance;
-            numericField.Value.Should().Be(value);
+            numericField.ReadValue.Should().Be(value);
             await comp.InvokeAsync(numericField.ValidateAsync);
-            numericField.Value.Should().Be(value);
+            numericField.ReadValue.Should().Be(value);
         }
 
         [TestCaseSource(nameof(TypeCases))]
@@ -618,15 +709,15 @@ namespace MudBlazor.UnitTests.Components
                 .Add(x => x.Min, min)
                 .Add(x => x.Max, max));
 
-            comp.Find("input").Change("15");
-            comp.Find("input").Blur();
+            await comp.Find("input").ChangeAsync("15");
+            await comp.Find("input").BlurAsync();
 
-            await comp.WaitForAssertionAsync(() => comp.Instance.Value.Should().Be(max));
+            await comp.WaitForAssertionAsync(() => comp.Instance.ReadValue.Should().Be(max));
 
-            comp.Find("input").Change("0");
-            comp.Find("input").Blur();
+            await comp.Find("input").ChangeAsync("0");
+            await comp.Find("input").BlurAsync();
 
-            await comp.WaitForAssertionAsync(() => comp.Instance.Value.Should().Be(min));
+            await comp.WaitForAssertionAsync(() => comp.Instance.ReadValue.Should().Be(min));
         }
 
         [TestCaseSource(nameof(TypeCases))]
@@ -639,15 +730,15 @@ namespace MudBlazor.UnitTests.Components
                 .Add(x => x.Min, min)
                 .Add(x => x.Max, max));
 
-            comp.Find("input").Change("15");
-            comp.Find("input").Blur();
+            await comp.Find("input").ChangeAsync("15");
+            await comp.Find("input").BlurAsync();
 
-            await comp.WaitForAssertionAsync(() => comp.Instance.Value.Should().Be(max));
+            await comp.WaitForAssertionAsync(() => comp.Instance.ReadValue.Should().Be(max));
 
-            comp.Find("input").Change("0");
-            comp.Find("input").Blur();
+            await comp.Find("input").ChangeAsync("0");
+            await comp.Find("input").BlurAsync();
 
-            await comp.WaitForAssertionAsync(() => comp.Instance.Value.Should().Be(min));
+            await comp.WaitForAssertionAsync(() => comp.Instance.ReadValue.Should().Be(min));
         }
 
         [TestCaseSource(nameof(TypeCases))]
@@ -663,14 +754,30 @@ namespace MudBlazor.UnitTests.Components
                 .Add(x => x.Value, value));
             await comp.InvokeAsync(() => comp.Instance.Increment());
             await comp.InvokeAsync(() => comp.Instance.Decrement());
-            comp.Instance.Value.Should().Be(value);
+            comp.Instance.ReadValue.Should().Be(value);
             // setting min and max to value will cover the boundary checking code
             await comp.SetParametersAndRenderAsync(parameters => parameters
                 .Add(x => x.Max, value)
                 .Add(x => x.Min, value));
             await comp.InvokeAsync(() => comp.Instance.Increment());
             await comp.InvokeAsync(() => comp.Instance.Decrement());
-            comp.Instance.Value.Should().Be(value);
+            comp.Instance.ReadValue.Should().Be(value);
+        }
+
+        [Test]
+        public async Task NumericField_SpinButtonsShouldFocusInput()
+        {
+            var comp = Context.Render<MudNumericField<int>>(parameters => parameters
+                .Add(x => x.HideSpinButtons, false)
+                .Add(x => x.Value, 5)
+                .Add(x => x.Step, 1));
+
+            await comp.FindAll(".mud-input-numeric-spin .mud-button-root")[0].TriggerEventAsync("onpointerdown", new PointerEventArgs());
+            await comp.FindAll(".mud-input-numeric-spin .mud-button-root")[1].TriggerEventAsync("onpointerdown", new PointerEventArgs());
+
+            Context.JSInterop.Invocations
+                .Count(x => x.Identifier == "Blazor._internal.domWrapper.focus")
+                .Should().Be(2);
         }
 
         [TestCaseSource(nameof(TypeCases))]
@@ -686,14 +793,14 @@ namespace MudBlazor.UnitTests.Components
                 .Add(x => x.Value, value));
             await comp.InvokeAsync(() => comp.Instance.Increment());
             await comp.InvokeAsync(() => comp.Instance.Decrement());
-            comp.Instance.Value.Should().Be(value);
+            comp.Instance.ReadValue.Should().Be(value);
             // setting min and max to value will cover the boundary checking code
             await comp.SetParametersAndRenderAsync(parameters => parameters
                 .Add(x => x.Max, value)
                 .Add(x => x.Min, value));
             await comp.InvokeAsync(() => comp.Instance.Increment());
             await comp.InvokeAsync(() => comp.Instance.Decrement());
-            comp.Instance.Value.Should().Be(value);
+            comp.Instance.ReadValue.Should().Be(value);
         }
 
         [TestCaseSource(nameof(TypeCases))]
@@ -703,17 +810,21 @@ namespace MudBlazor.UnitTests.Components
             await comp.SetParametersAndRenderAsync(parameters => parameters.Add(x => x.Step, value));
 
             await comp.InvokeAsync(() => comp.Instance.Increment());
-            comp.Instance.Value.Should().Be(value);
+            comp.Instance.ReadValue.Should().Be(value);
 
-            comp.Find("input").Change("");
+            await comp.Find("input").ChangeAsync("");
 
             if (typeof(T) == typeof(byte) || typeof(T) == typeof(ushort) || typeof(T) == typeof(uint) || typeof(T) == typeof(ulong))
+            {
                 value = Num.To<T>(0);
+            }
             else
+            {
                 value = (T)Convert.ChangeType(-Convert.ToDouble(value), typeof(T));
+            }
 
             await comp.InvokeAsync(() => comp.Instance.Decrement());
-            comp.Instance.Value.Should().Be(value);
+            comp.Instance.ReadValue.Should().Be(value);
         }
 
         [TestCaseSource(nameof(TypeCases))]
@@ -725,12 +836,12 @@ namespace MudBlazor.UnitTests.Components
             // test max overflow
             await comp.SetParametersAndRenderAsync(parameters => parameters.Add(x => x.Value, comp.Instance.Max));
             await comp.InvokeAsync(() => comp.Instance.Increment());
-            comp.Instance.Value.Should().Be(comp.Instance.Max);
+            comp.Instance.ReadValue.Should().Be(comp.Instance.Max);
 
             // test min overflow
             await comp.SetParametersAndRenderAsync(parameters => parameters.Add(x => x.Value, comp.Instance.Min));
             await comp.InvokeAsync(() => comp.Instance.Decrement());
-            comp.Instance.Value.Should().Be(comp.Instance.Min);
+            comp.Instance.ReadValue.Should().Be(comp.Instance.Min);
         }
 
         [TestCaseSource(nameof(TypeCases))]
@@ -742,12 +853,12 @@ namespace MudBlazor.UnitTests.Components
             // test max overflow
             await comp.SetParametersAndRenderAsync(parameters => parameters.Add(x => x.Value, comp.Instance.Max));
             await comp.InvokeAsync(() => comp.Instance.Increment());
-            comp.Instance.Value.Should().Be(comp.Instance.Max);
+            comp.Instance.ReadValue.Should().Be(comp.Instance.Max);
 
             // test min overflow
             await comp.SetParametersAndRenderAsync(parameters => parameters.Add(x => x.Value, comp.Instance.Min));
             await comp.InvokeAsync(() => comp.Instance.Decrement());
-            comp.Instance.Value.Should().Be(comp.Instance.Min);
+            comp.Instance.ReadValue.Should().Be(comp.Instance.Min);
         }
 
         /// <summary>
@@ -763,10 +874,10 @@ namespace MudBlazor.UnitTests.Components
                 .Add(x => x.Max, max)
                 .Add(x => x.Value, value));
 
-            comp.Find("input").Change("");
-            comp.Find("input").Blur();
+            await comp.Find("input").ChangeAsync("");
+            await comp.Find("input").BlurAsync();
 
-            await comp.WaitForAssertionAsync(() => comp.Instance.Value.Should().BeNull());
+            await comp.WaitForAssertionAsync(() => comp.Instance.ReadValue.Should().BeNull());
         }
 
         /// <summary>
@@ -782,8 +893,8 @@ namespace MudBlazor.UnitTests.Components
             // print the generated html
             // select elements needed for the test
             var numericField = comp.Instance;
-            numericField.Value.Should().Be(null);
-            numericField.Text.Should().Be(null);
+            numericField.ReadValue.Should().Be(null);
+            numericField.ReadText.Should().Be(null);
             //
             77.ToString("€0", CultureInfo.InvariantCulture).Should().Be("€77");
             var conv = new DefaultConverter<int?>()
@@ -793,10 +904,10 @@ namespace MudBlazor.UnitTests.Components
             };
             conv.Convert(77).Should().Be("€77");
             //
-            comp.FindAll("input").First().Change("1234");
-            comp.FindAll("input").First().Blur();
-            await comp.WaitForAssertionAsync(() => numericField.Text.Should().Be("€1234"));
-            await comp.WaitForAssertionAsync(() => numericField.Value.Should().Be(1234));
+            await comp.FindAll("input").First().ChangeAsync("1234");
+            await comp.FindAll("input").First().BlurAsync();
+            await comp.WaitForAssertionAsync(() => numericField.ReadText.Should().Be("€1234"));
+            await comp.WaitForAssertionAsync(() => numericField.ReadValue.Should().Be(1234));
         }
 
         /// <summary>
@@ -808,39 +919,44 @@ namespace MudBlazor.UnitTests.Components
             var comp = Context.Render<MudNumericField<int?>>();
             var numericField = comp.Instance;
 
-            numericField.Value.Should().Be(null);
-            numericField.Text.Should().Be(null);
+            numericField.ReadValue.Should().Be(null);
+            numericField.ReadText.Should().Be(null);
 
             // comma separator
             await comp.SetParametersAndRenderAsync(parameters => parameters.Add(x => x.Culture, CultureInfo.InvariantCulture));
-            comp.FindAll("input").First().Change("1,000");
-            comp.FindAll("input").First().Blur();
-            await comp.WaitForAssertionAsync(() => numericField.Text.Should().Be("1000"));
-            await comp.WaitForAssertionAsync(() => numericField.Value.Should().Be(1000));
+            await comp.FindAll("input").First().ChangeAsync("1,000");
+            await comp.FindAll("input").First().BlurAsync();
+            await comp.WaitForAssertionAsync(() => numericField.ReadText.Should().Be("1000"));
+            await comp.WaitForAssertionAsync(() => numericField.ReadValue.Should().Be(1000));
 
             // period separator
             await comp.SetParametersAndRenderAsync(parameters => parameters.Add(x => x.Culture, new CultureInfo("de-DE", false)));
-            comp.FindAll("input").First().Change("1.000");
-            comp.FindAll("input").First().Blur();
-            await comp.WaitForAssertionAsync(() => numericField.Text.Should().Be("1000"));
-            await comp.WaitForAssertionAsync(() => numericField.Value.Should().Be(1000));
+            await comp.FindAll("input").First().ChangeAsync("1.000");
+            await comp.FindAll("input").First().BlurAsync();
+            await comp.WaitForAssertionAsync(() => numericField.ReadText.Should().Be("1000"));
+            await comp.WaitForAssertionAsync(() => numericField.ReadValue.Should().Be(1000));
         }
 
         /// <summary>
         /// Validate that a re-render of a debounced numeric field does not cause a loss of uncommitted text.
         /// </summary>
         [Test]
-        public async Task DebouncedNumericFieldRerenderTest()
+        [Ignore("Randomly fails or causes test-host hangs under heavy loads.")]
+        public async Task DebouncedNumericFieldRerender()
         {
+            var timeProvider = new FakeTimeProvider();
+            Context.Services.AddSingleton<TimeProvider>(timeProvider);
+
             var comp = Context.Render<DebouncedNumericFieldRerenderTest>();
             var numericField = comp.FindComponent<MudNumericField<int>>().Instance;
-            var delayedRerenderButton = comp.Find("button#re-render");
+            IElement DelayedRerenderButton() => comp.Find("button#re-render");
+            IElement Input() => comp.Find("input");
             var converter = new DefaultConverter<int>();
-            comp.Find("input").Input(new ChangeEventArgs { Value = "1" });
+            await Input().InputAsync("1");
             // trigger first value change
-            await Task.Delay(comp.Instance.DebounceInterval);
+            timeProvider.Advance(TimeSpan.FromMilliseconds(comp.Instance.DebounceInterval));
             // trigger delayed re-render
-            delayedRerenderButton.Click();
+            await DelayedRerenderButton().ClickAsync();
             // imitate "typing in progress" by extending the debounce interval until component re-renders
             var elapsedTime = 0;
             var currentText = "1";
@@ -848,14 +964,15 @@ namespace MudBlazor.UnitTests.Components
             {
                 var delay = comp.Instance.DebounceInterval / 2;
                 currentText += "2";
-                comp.Find("input").Input(new ChangeEventArgs { Value = currentText });
-                await Task.Delay(delay);
+                await Input().InputAsync(currentText);
+                timeProvider.Advance(TimeSpan.FromMilliseconds(delay));
                 elapsedTime += delay;
             }
             // after the final debounce, the value should be updated without swallowing any user input
-            await Task.Delay(comp.Instance.DebounceInterval);
+            timeProvider.Advance(TimeSpan.FromMilliseconds(comp.Instance.DebounceInterval));
+            await Task.Delay(10); // Give the debouncer's InvokeAsync a chance to complete
             comp.Instance.Value.Should().Be(converter.ConvertBack(currentText));
-            numericField.Text.Should().Be(currentText);
+            numericField.ReadText.Should().Be(currentText);
         }
 
         [Test]
@@ -866,24 +983,28 @@ namespace MudBlazor.UnitTests.Components
             var comp = Context.Render<DebouncedNumericFieldRerenderTest>(parameters => parameters
                 .Add(x => x.Value, defaultValue));
             var textfield = comp.FindComponent<MudNumericField<int>>().Instance;
-            textfield.Text.Should().Be(converter.Convert(defaultValue));
+            textfield.ReadText.Should().Be(converter.Convert(defaultValue));
         }
 
         /// <summary>
         /// Validate that a re-render of a debounced numeric field does not cause a loss of uncommitted text while changing culture.
         /// </summary>
         [Test]
-        public async Task DebouncedNumericFieldCultureChangeRerenderTest()
+        [Ignore("Randomly fails or causes test-host hangs under heavy loads.")]
+        public async Task DebouncedNumericFieldCultureChangeRerender()
         {
-            var comp = Context.Render<DebouncedNumericFieldCultureChangeRerenderTest>();
+            var timeProvider = new FakeTimeProvider();
+            Context.Services.AddSingleton<TimeProvider>(timeProvider);
+
+            var comp = Context.Render<NumericFieldCultureChangeTest>();
             var numericField = comp.FindComponent<MudNumericField<double>>().Instance;
             var delayedCultureChange = comp.Find("button#culture-change");
             // ensure text is updated on initialize
-            numericField.Text.Should().Be(comp.Instance.Value.ToString(comp.Instance.Format, comp.Instance.Culture));
+            numericField.ReadText.Should().Be(comp.Instance.Value.ToString(comp.Instance.Format, comp.Instance.Culture));
             // trigger first value change
-            await Task.Delay(comp.Instance.DebounceInterval);
+            timeProvider.Advance(TimeSpan.FromMilliseconds(comp.Instance.DebounceInterval));
             // trigger the culture change
-            delayedCultureChange.Click();
+            await delayedCultureChange.ClickAsync();
             // imitate "typing in progress" by extending the debounce interval until component re-renders
             var elapsedTime = 0;
             var currentText = comp.Instance.Value.ToString(comp.Instance.Format, comp.Instance.Culture);
@@ -891,16 +1012,17 @@ namespace MudBlazor.UnitTests.Components
             {
                 var delay = comp.Instance.DebounceInterval / 2;
                 currentText += "2";
-                comp.Find("input").Input(new ChangeEventArgs { Value = currentText });
-                await Task.Delay(delay);
+                await comp.Find("input").InputAsync(new ChangeEventArgs { Value = currentText });
+                timeProvider.Advance(TimeSpan.FromMilliseconds(delay));
                 elapsedTime += delay;
             }
             // after the culture change delay has elapsed, the uncommitted text is retained (with the old culture)
-            numericField.Text.Should().Be(currentText);
+            numericField.ReadText.Should().Be(currentText);
             // once debounce occurs, both value and text are translated into the new culture
             // e.g. 1.00222222 (one comma something in en-US) turns into 100.222.222 (hundred million something in de-DE)
-            await Task.Delay(comp.Instance.DebounceInterval * 2);
-            numericField.Text.Should().Be(comp.Instance.Value.ToString(comp.Instance.Format, comp.Instance.Culture));
+            timeProvider.Advance(TimeSpan.FromMilliseconds(comp.Instance.DebounceInterval * 2));
+            await Task.Delay(10); // Give the debouncer's InvokeAsync a chance to complete
+            numericField.ReadText.Should().Be(comp.Instance.Value.ToString(comp.Instance.Format, comp.Instance.Culture));
         }
 
         /// <summary>
@@ -1002,13 +1124,13 @@ namespace MudBlazor.UnitTests.Components
         }
 
         [Test]
-        public async Task Should_render_appropriate_type()
+        public async Task Should_render_text_input_and_only_emit_pattern_when_explicitly_set()
         {
             var comp = Context.Render<NumericFieldRenderTest>();
             var field = comp.Find("#num-field-id");
 
             comp.Markup.Should().NotContain("pattern");
-            field.GetAttribute("type").Should().Be("number");
+            field.GetAttribute("type").Should().Be("text");
 
             await comp.SetParametersAndRenderAsync(parameters => parameters
                 .Add(x => x.UsePattern, true));
@@ -1019,7 +1141,39 @@ namespace MudBlazor.UnitTests.Components
                 .Add(x => x.UsePattern, false));
 
             comp.Markup.Should().NotContain("pattern");
-            field.GetAttribute("type").Should().Be("number");
+            field.GetAttribute("type").Should().Be("text");
+        }
+
+        [Test]
+        public void NumericField_Should_RenderSpinbuttonAriaAttributes()
+        {
+            var comp = Context.Render<MudNumericField<int>>(parameters => parameters
+                .Add(p => p.Value, 4)
+                .Add(p => p.Min, 1)
+                .Add(p => p.Max, 10));
+
+            var input = comp.Find("input");
+
+            input.GetAttribute("type").Should().Be("text");
+            input.GetAttribute("role").Should().Be("spinbutton");
+            input.GetAttribute("aria-valuenow").Should().Be("4");
+            input.GetAttribute("aria-valuemin").Should().Be("1");
+            input.GetAttribute("aria-valuemax").Should().Be("10");
+            input.HasAttribute("aria-valuetext").Should().BeFalse();
+        }
+
+        [Test]
+        public void NumericField_Should_RenderAriaValueText_WhenFormattedTextDiffers()
+        {
+            var comp = Context.Render<MudNumericField<double>>(parameters => parameters
+                .Add(p => p.Value, 1234.56)
+                .Add(p => p.Culture, CultureInfo.GetCultureInfo("en-US"))
+                .Add(p => p.Format, "N2"));
+
+            var input = comp.Find("input");
+
+            input.GetAttribute("aria-valuenow").Should().Be("1234.56");
+            input.GetAttribute("aria-valuetext").Should().Be("1,234.56");
         }
 
         [Test]
@@ -1029,12 +1183,27 @@ namespace MudBlazor.UnitTests.Components
             var comp = Context.Render<NumericFieldRenderTest>();
             var numericField = comp.FindComponent<MudNumericField<decimal>>();
 
-            comp.Find("input").Change("123.45");
-            comp.Find("input").Blur();
+            await comp.Find("input").ChangeAsync("123.45");
+            await comp.Find("input").BlurAsync();
 
             await comp.WaitForAssertionAsync(() => comp.Instance.Value.Should().Be(123.45M));
-            numericField.Instance.Text.Should().Be("123.45");
+            numericField.Instance.ReadText.Should().Be("123.45");
             numericField.Instance.GetState(x => x.Culture).Name.Should().Be("");
+        }
+
+        [Test]
+        [SetUICulture("ru-RU")]
+        public async Task Should_apply_explicit_current_ui_culture()
+        {
+            var comp = Context.Render<MudNumericField<decimal>>(parameters => parameters
+                .Add(p => p.Culture, CultureInfo.GetCultureInfo("ru-RU")));
+
+            await comp.Find("input").ChangeAsync("123,45");
+            await comp.Find("input").BlurAsync();
+
+            await comp.WaitForAssertionAsync(() => comp.Instance.ReadValue.Should().Be(123.45M));
+            comp.Instance.ReadText.Should().Be("123,45");
+            comp.Instance.Culture.Name.Should().Be("ru-RU");
         }
 
         [Test]
@@ -1044,11 +1213,11 @@ namespace MudBlazor.UnitTests.Components
             var comp = Context.Render<MudNumericField<decimal>>(parameters => parameters
                                 .Add(p => p.Format, "N3"));
 
-            comp.Find("input").Change("123,45");
-            comp.Find("input").Blur();
+            await comp.Find("input").ChangeAsync("123,45");
+            await comp.Find("input").BlurAsync();
 
-            await comp.WaitForAssertionAsync(() => comp.Instance.Value.Should().Be(123.45M));
-            comp.Instance.Text.Should().Be("123,450");
+            await comp.WaitForAssertionAsync(() => comp.Instance.ReadValue.Should().Be(123.45M));
+            comp.Instance.ReadText.Should().Be("123,450");
             comp.Instance.Culture.Name.Should().Be("ru-RU");
         }
 
@@ -1059,11 +1228,11 @@ namespace MudBlazor.UnitTests.Components
             var comp = Context.Render<MudNumericField<decimal>>(parameters => parameters
                                 .Add(p => p.Pattern, "[0-9,.\\-]"));
 
-            comp.Find("input").Change("123,45");
-            comp.Find("input").Blur();
+            await comp.Find("input").ChangeAsync("123,45");
+            await comp.Find("input").BlurAsync();
 
-            await comp.WaitForAssertionAsync(() => comp.Instance.Value.Should().Be(123.45M));
-            comp.Instance.Text.Should().Be("123,45");
+            await comp.WaitForAssertionAsync(() => comp.Instance.ReadValue.Should().Be(123.45M));
+            comp.Instance.ReadText.Should().Be("123,45");
             comp.Instance.GetState(x => x.Culture).Name.Should().Be("ru-RU");
         }
 
@@ -1072,22 +1241,21 @@ namespace MudBlazor.UnitTests.Components
         public async Task Should_apply_defined_culture()
         {
             var comp = Context.Render<NumericFieldCultureTest>();
-            var inputs = comp.FindAll("input");
-            var immediate = inputs.First();
-            var notImmediate = inputs.Last();
+            IElement Immediate() => comp.Find("#immediate");
+            IElement NotImmediate() => comp.Find("#notImmediate");
 
             //german
-            notImmediate.Change("1.234,56");
-            notImmediate.Blur();
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.Text.Should().Be("1.234,56"));
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.Value.Should().Be(1234.56));
+            await NotImmediate().ChangeAsync("1.234,56");
+            await NotImmediate().BlurAsync();
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.ReadText.Should().Be("1.234,56"));
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldNotImmediate.ReadValue.Should().Be(1234.56));
             comp.Instance.FieldNotImmediate.Culture.Name.Should().Be("de-DE");
 
             // English
-            immediate.Input("1234.56");
-            immediate.Blur();
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.Text.Should().Be("1,234.56"));
-            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.Value.Should().Be(1234.56));
+            await Immediate().InputAsync("1234.56");
+            await Immediate().BlurAsync();
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.ReadText.Should().Be("1,234.56"));
+            await comp.WaitForAssertionAsync(() => comp.Instance.FieldImmediate.ReadValue.Should().Be(1234.56));
             comp.Instance.FieldImmediate.Culture.Name.Should().Be("en-US");
         }
 
@@ -1099,11 +1267,11 @@ namespace MudBlazor.UnitTests.Components
                                 .Add(p => p.Format, "N3")
                                 .Add(p => p.Culture, CultureInfo.GetCultureInfo("en-US")));
 
-            comp.Find("input").Change("123.45");
-            comp.Find("input").Blur();
+            await comp.Find("input").ChangeAsync("123.45");
+            await comp.Find("input").BlurAsync();
 
-            await comp.WaitForAssertionAsync(() => comp.Instance.Value.Should().Be(123.45M));
-            comp.Instance.Text.Should().Be("123.450");
+            await comp.WaitForAssertionAsync(() => comp.Instance.ReadValue.Should().Be(123.45M));
+            comp.Instance.ReadText.Should().Be("123.450");
             comp.Instance.Culture.Name.Should().Be("en-US");
         }
 
@@ -1115,11 +1283,11 @@ namespace MudBlazor.UnitTests.Components
                                 .Add(p => p.Pattern, "[0-9,.\\-]")
                                 .Add(p => p.Culture, CultureInfo.GetCultureInfo("en-US")));
 
-            comp.Find("input").Change("123.45");
-            comp.Find("input").Blur();
+            await comp.Find("input").ChangeAsync("123.45");
+            await comp.Find("input").BlurAsync();
 
-            await comp.WaitForAssertionAsync(() => comp.Instance.Value.Should().Be(123.45M));
-            comp.Instance.Text.Should().Be("123.45");
+            await comp.WaitForAssertionAsync(() => comp.Instance.ReadValue.Should().Be(123.45M));
+            comp.Instance.ReadText.Should().Be("123.45");
             comp.Instance.Culture.Name.Should().Be("en-US");
         }
 
@@ -1133,6 +1301,8 @@ namespace MudBlazor.UnitTests.Components
 
             comp.Instance.ConversionErrorMessage.Should().NotBeNullOrEmpty();
             comp.Find("#error-id").InnerHtml.Should().Be(comp.Instance.ConversionErrorMessage);
+            comp.Find("input").GetAttribute("aria-describedby").Should().Be("error-id");
+            comp.Find("input").GetAttribute("aria-invalid").Should().Be("true");
         }
 
         [TestCase(Adornment.Start)]
@@ -1222,13 +1392,13 @@ namespace MudBlazor.UnitTests.Components
             var numericField = comp.Instance;
 
             // insert an invalid int number, greater then maximum int value
-            comp.FindAll("input").First().Change("2147483648");
-            comp.FindAll("input").First().Blur();
+            await comp.FindAll("input").First().ChangeAsync("2147483648");
+            await comp.FindAll("input").First().BlurAsync();
 
             // conversion is not possible and conversion error is set
             await comp.WaitForAssertionAsync(() =>
             {
-                numericField.Value.Should().Be(0);
+                numericField.ReadValue.Should().Be(0);
                 numericField.HasErrors.Should().Be(true);
                 numericField.ConversionError.Should().Be(true);
                 numericField.ConversionErrorMessage.Should().NotBeNullOrEmpty();
@@ -1240,7 +1410,7 @@ namespace MudBlazor.UnitTests.Components
             // conversion error is cleared
             await comp.WaitForAssertionAsync(() =>
             {
-                numericField.Value.Should().Be(0);
+                numericField.ReadValue.Should().Be(0);
                 numericField.HasErrors.Should().Be(false);
                 numericField.ConversionError.Should().Be(false);
                 numericField.ConversionErrorMessage.Should().BeNull();

@@ -9,11 +9,10 @@ using MudBlazor.Interfaces;
 using MudBlazor.State;
 using MudBlazor.Utilities;
 
-#nullable enable
 namespace MudBlazor
 {
     /// <summary>
-    /// An overlay providing the user with information, a choice, or other input.
+    /// Displays an overlay that prompts users to confirm an action or provide additional information.
     /// </summary>
     /// <seealso cref="MudDialogContainer"/>
     /// <seealso cref="MudDialogProvider"/>
@@ -26,7 +25,7 @@ namespace MudBlazor
     {
         private IDialogReference? _reference;
         private readonly ParameterState<bool> _visibleState;
-        private SemaphoreSlim _showLock = new SemaphoreSlim(1, 1);
+        private readonly SemaphoreSlim _showLock = new SemaphoreSlim(1, 1);
 
         /// <summary>
         /// Creates a new instance.
@@ -53,6 +52,9 @@ namespace MudBlazor
 
         [CascadingParameter(Name = "IsNested")]
         private bool IsNested { get; set; }
+
+        [CascadingParameter]
+        private DialogOptions GlobalDialogOptions { get; set; } = DialogOptions.Default;
 
         [Inject]
         protected IDialogService DialogService { get; set; } = null!;
@@ -182,11 +184,11 @@ namespace MudBlazor
         /// The element which will receive focus when this dialog is shown.
         /// </summary>
         /// <remarks>
-        /// Defaults to <see cref="DefaultFocus.Element"/> in <see cref="MudGlobal.DialogDefaults.DefaultFocus"/>.
+        /// Defaults to <c>null</c>, which will use the global default from <see cref="MudDialogProvider.DefaultFocus"/> if set, otherwise <see cref="DefaultFocus.Element"/>.
         /// </remarks>
         [Parameter]
         [Category(CategoryTypes.Dialog.Behavior)]
-        public DefaultFocus DefaultFocus { get; set; } = MudGlobal.DialogDefaults.DefaultFocus;
+        public DefaultFocus? DefaultFocus { get; set; }
 
         private bool IsInline => IsNested || DialogInstance is null;
 

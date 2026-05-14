@@ -1,5 +1,6 @@
-﻿using Bunit;
-using FluentAssertions;
+﻿using System;
+using AwesomeAssertions;
+using Bunit;
 using Microsoft.Extensions.DependencyInjection;
 using MudBlazor.UnitTests.TestComponents.Popover;
 using NUnit.Framework;
@@ -18,6 +19,8 @@ namespace MudBlazor.UnitTests.Components
             options.ContainerClass.Should().Be("mud-popover-provider");
             options.FlipMargin.Should().Be(0);
             options.ThrowOnDuplicateProvider.Should().Be(true);
+            options.Delay.Should().Be(TimeSpan.Zero);
+            options.Duration.Should().Be(TimeSpan.FromMilliseconds(251));
         }
 
         //[Test]
@@ -36,7 +39,6 @@ namespace MudBlazor.UnitTests.Components
         //    mock.Setup(x => x.InvokeAsync<IJSVoidResult>("mudPopover.disconnect", It.IsAny<CancellationToken>(), It.Is<object[]>(y => y.Length == 1 && (Guid)y[0] == handler.Id)))
         //        .Returns(new ValueTask<IJSVoidResult>(connectTcs.Task))
         //        .Verifiable();
-
 
         //    var comp = Context.Render<MudBadge>(p =>
         //    {
@@ -76,7 +78,6 @@ namespace MudBlazor.UnitTests.Components
         //        .Returns(new ValueTask<IJSVoidResult>(connectTcs.Task))
         //        .Verifiable();
 
-
         //    var comp = Context.Render<MudBadge>(p =>
         //    {
         //        p.Add(x => x.UserAttributes, new Dictionary<string, object> { { "myprop1", "myValue1" } });
@@ -112,8 +113,20 @@ namespace MudBlazor.UnitTests.Components
             popover.AnchorOrigin.Should().Be(Origin.TopLeft);
             popover.TransformOrigin.Should().Be(Origin.TopLeft);
             popover.RelativeWidth.Should().Be(DropdownWidth.Ignore);
-            popover.OverflowBehavior.Should().Be(OverflowBehavior.FlipOnOpen);
-            popover.Duration.Should().Be(251);
+            popover.OverflowBehavior.Should().BeNull();
+            popover.Duration.Should().BeNull();
+        }
+
+        [Test]
+        public void MudPopover_DefaultStyles_UsePopoverOptions()
+        {
+            var comp = Context.Render<PopoverPropertyTest>();
+
+            var popoverElement = comp.Find(".test-popover-content").ParentElement;
+            var style = popoverElement.GetAttribute("style");
+
+            style.Should().Contain("transition-duration:251ms");
+            style.Should().Contain("transition-delay:0ms");
         }
 
         [Test]

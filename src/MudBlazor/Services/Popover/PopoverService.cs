@@ -11,10 +11,13 @@ using MudBlazor.Utilities.ObserverManager;
 
 namespace MudBlazor;
 
-#nullable enable
 /// <summary>
-/// Represents a service for managing popovers.
+/// Manages popover lifecycles, state updates, and JS positioning for all active popovers.
 /// </summary>
+/// <remarks>
+/// This service is the backbone for menu, select, tooltip, and other popover-based components.
+/// It centralizes creation, updates, and disposal while coordinating with popover providers.
+/// </remarks>
 internal class PopoverService : IPopoverService, IBatchTimerHandler<MudPopoverHolder>
 {
     private bool _disposed;
@@ -25,6 +28,7 @@ internal class PopoverService : IPopoverService, IBatchTimerHandler<MudPopoverHo
     private readonly CancellationTokenSource _cancellationTokenSource;
     private readonly BatchPeriodicQueue<MudPopoverHolder> _batchExecutor;
     private readonly ObserverManager<Guid, IPopoverObserver> _observerManager;
+    private readonly TimeProvider _timeProvider;
 
     /// <inheritdoc />
     public IEnumerable<IMudPopoverHolder> ActivePopovers => _holders.Values;
@@ -56,16 +60,18 @@ internal class PopoverService : IPopoverService, IBatchTimerHandler<MudPopoverHo
     /// </summary>
     /// <param name="logger">The logger used for logging.</param>
     /// <param name="jsInterop">Instance of a JavaScript runtime to calls are dispatched.</param>
+    /// <param name="timeProvider">The time provider for obtaining the current time.</param>
     /// <param name="options">The options for the popover service (optional).</param>
-    public PopoverService(ILogger<PopoverService> logger, IJSRuntime jsInterop, IOptions<PopoverOptions>? options = null)
+    public PopoverService(ILogger<PopoverService> logger, IJSRuntime jsInterop, TimeProvider timeProvider, IOptions<PopoverOptions>? options = null)
     {
+        _timeProvider = timeProvider;
         PopoverOptions = options?.Value ?? new PopoverOptions();
         _holders = new Dictionary<Guid, MudPopoverHolder>();
         _cancellationTokenSource = new CancellationTokenSource();
         // Cache the token to avoid passing the CancellationTokenSource itself because it will throw once you access it after it's disposed
         _cancellationToken = _cancellationTokenSource.Token;
         _popoverJsInterop = new PopoverJsInterop(jsInterop);
-        _batchExecutor = new BatchPeriodicQueue<MudPopoverHolder>(this, PopoverOptions.QueueDelay);
+        _batchExecutor = new BatchPeriodicQueue<MudPopoverHolder>(this, PopoverOptions.QueueDelay, timeProvider);
         _observerManager = new ObserverManager<Guid, IPopoverObserver>(logger);
     }
 
@@ -109,7 +115,7 @@ internal class PopoverService : IPopoverService, IBatchTimerHandler<MudPopoverHo
             }
         }
 
-        var holder = new MudPopoverHolder(popover.Id)
+        var holder = new MudPopoverHolder(popover.Id, _timeProvider)
             .SetFragment(popover.ChildContent)
             .SetClass(popover.PopoverClass)
             .SetStyle(popover.PopoverStyles)
@@ -190,7 +196,7 @@ internal class PopoverService : IPopoverService, IBatchTimerHandler<MudPopoverHo
     }
 
     /// <inheritdoc />
-    public virtual Task OnBatchTimerElapsedAsync(IReadOnlyCollection<MudPopoverHolder> items, CancellationToken stoppingToken)
+    public virtual Task OnBatchTimerElapsedAsync(IReadOnlyCollection<MudPopoverHolder> items, CancellationToken stoppingToken = default)
     {
         // In our case we do not care if the cancellation token in requested, we should not interrupt the process and just detach to clean-up resources.
         // In the future, there might be a requirement to split the jobs and introduce a change where instead of using IReadOnlyCollection<MudPopoverHolder>,
@@ -223,7 +229,7 @@ internal class PopoverService : IPopoverService, IBatchTimerHandler<MudPopoverHo
             _observerManager.Clear();
 
             // Do not send our CancellationTokenSource as it was cancelled.
-            await _popoverJsInterop.Dispose(CancellationToken.None);
+            await _popoverJsInterop.DisposeAsync(CancellationToken.None);
 
             _cancellationTokenSource.Dispose();
         }
